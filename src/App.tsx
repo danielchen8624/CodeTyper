@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ALL_CONCEPTS, generateSnippet, label, type Concept } from "./lib/generators";
+import { CONCEPTS, generateSnippet, type Concept } from "./lib/generators";
 import "./styles.css";
 
 type TestState = "idle" | "running" | "done";
@@ -17,8 +17,14 @@ const consumeWhile = (T: string, i: number, p: (c: string) => boolean) => {
 const isSpace = (c: string) => c === " " || c === "\t";
 const isNL = (c: string) => c === "\n";
 
+function computeLineStarts(text: string): number[] {
+  const starts = [0];
+  for (let i = 0; i < text.length; i++) if (text[i] === "\n") starts.push(i + 1);
+  return starts;
+}
+
 export default function App() {
-  const [concept, setConcept] = useState<Concept>("for");
+  const [concept, setConcept] = useState<Concept>("loops");
   const [target, setTarget] = useState<string>(generateSnippet(concept, 3));
   const [input, setInput] = useState<string>("");
   const [state, setState] = useState<TestState>("idle");
@@ -26,12 +32,22 @@ export default function App() {
   const [endedAt, setEndedAt] = useState<number | null>(null);
   const hiddenRef = useRef<HTMLTextAreaElement>(null);
 
-  // Keep focus on the hidden textarea (Monkeytype-like)
+  // Focus once on mount
   useEffect(() => {
-    const focus = () => hiddenRef.current?.focus();
-    focus();
-    window.addEventListener("click", focus);
-    return () => window.removeEventListener("click", focus);
+    hiddenRef.current?.focus();
+  }, []);
+
+  // Scoped focus: don't steal focus from toolbar/dropdown
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      const el = e.target as HTMLElement;
+      if (el.closest(".toolbar")) return;
+      const tag = el.tagName.toLowerCase();
+      if (tag === "select" || tag === "button" || tag === "input" || tag === "textarea" || el.isContentEditable) return;
+      hiddenRef.current?.focus();
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
   // Stats
@@ -44,7 +60,7 @@ export default function App() {
     return { accuracy: acc, wpm: grossWpm };
   }, [input, target, startedAt, endedAt]);
 
-  // Start/finish transitions
+  // Start/finish
   useEffect(() => {
     if (state === "idle" && input.length > 0) {
       setState("running");
@@ -72,6 +88,7 @@ export default function App() {
     restart(undefined, c);
   }
 
+  // Typing handlers
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const next = e.target.value;
     setInput(next.length <= target.length ? next : next.slice(0, target.length));
@@ -87,7 +104,7 @@ export default function App() {
       return;
     }
 
-    // Tab → skip upcoming spaces/tabs in target (jump indentation)
+    // Tab → skip indentation spaces/tabs present in target
     if (e.key === "Tab") {
       e.preventDefault();
       if (idx >= target.length) return;
@@ -96,7 +113,7 @@ export default function App() {
       return;
     }
 
-    // Enter → newline (consume block gaps), minimal smart indent after ':'
+    // Enter → newline (consume block gaps); smart indent after ':'
     if (e.key === "Enter") {
       e.preventDefault();
       let ins = "";
@@ -109,39 +126,65 @@ export default function App() {
     }
   }
 
-  // Render per-char coloring
-  const chars = useMemo(() => {
-    const out: { ch: string; status: "pending" | "correct" | "wrong" }[] = [];
-    for (let i = 0; i < target.length; i++) {
-      let s: "pending" | "correct" | "wrong" = "pending";
-      if (i < input.length) s = input[i] === target[i] ? "correct" : "wrong";
-      out.push({ ch: target[i], status: s });
-    }
-    return out;
-  }, [target, input]);
+  // ---------- Visible window (10 lines: 2 above, current as 3rd, 7 after) ----------
+  const BEFORE = 2;              // lines above current
+  const WINDOW = 10;             // total visible lines
+  const lineStarts = useMemo(() => computeLineStarts(target), [target]);
+  const totalLines = lineStarts.length;
 
-  const currentIndex = input.length;
-  const progress = Math.round((currentIndex / target.length) * 100);
+  // current line = number of typed newlines (clamped)
+  const currentLine = useMemo(() => {
+    const typed = input.match(/\n/g)?.length ?? 0;
+    return Math.min(typed, totalLines - 1);
+  }, [input, totalLines]);
+
+  // place current line at index 2 (third visible line) when possible
+  const maxStart = Math.max(0, totalLines - WINDOW);
+  const desiredStart = currentLine - BEFORE;
+  const startLine = Math.max(0, Math.min(desiredStart, maxStart));
+  const endLine = Math.min(totalLines, startLine + WINDOW);
+
+  const startChar = lineStarts[startLine] ?? 0;
+  const endChar = endLine < totalLines ? lineStarts[endLine] : target.length;
+
+  const visibleTarget = target.slice(startChar, endChar);
+
+  // Slice render statuses
+  const visibleChars = useMemo(() => {
+    const arr: { ch: string; status: "pending" | "correct" | "wrong" }[] = [];
+    for (let gi = startChar; gi < endChar; gi++) {
+      let status: "pending" | "correct" | "wrong" = "pending";
+      if (gi < input.length) status = input[gi] === target[gi] ? "correct" : "wrong";
+      arr.push({ ch: target[gi], status });
+    }
+    return arr;
+  }, [target, input, startChar, endChar]);
+
+  const caretInSlice = Math.max(0, Math.min(input.length - startChar, visibleTarget.length));
+  const progress = Math.round((input.length / target.length) * 100);
 
   return (
     <div className="wrap">
-      {/* Concept tabs */}
-      <div className="tabs">
-        {ALL_CONCEPTS.map((c) => (
-          <button
-            key={c}
-            className={`tab ${c === concept ? "active" : ""}`}
-            onClick={() => switchConcept(c)}
+      {/* Toolbar */}
+      <div className="toolbar">
+        <label className="mode">
+          <span className="mode-label">Mode</span>
+          <select
+            className="mode-select"
+            value={concept}
+            onChange={(e) => switchConcept(e.target.value as Concept)}
           >
-            {label(c)}
-          </button>
-        ))}
+            {CONCEPTS.map(({ id, label }) => (
+              <option key={id} value={id}>{label}</option>
+            ))}
+          </select>
+        </label>
         <div className="spacer" />
         <button className="btn" onClick={() => restart()}>Restart</button>
         <button className="btn" onClick={() => restart(4)}>New (4 blocks)</button>
       </div>
 
-      {/* Hidden textarea for capture */}
+      {/* Hidden textarea */}
       <textarea
         ref={hiddenRef}
         value={input}
@@ -162,16 +205,16 @@ export default function App() {
         <div className="stat"><strong>PROG</strong> {progress}%</div>
       </header>
 
-      {/* Typing stage */}
+      {/* Typing stage — 10-line window (2 above, current as 3rd, 7 after) */}
       <main className="stage" onClick={() => hiddenRef.current?.focus()}>
         <div className="text">
-          {chars.map((c, i) => (
+          {visibleChars.map((c, i) => (
             <span
               key={i}
               className={c.status === "correct" ? "char ok" : c.status === "wrong" ? "char bad" : "char"}
             >
               {c.ch === " " ? "\u00A0" : c.ch}
-              {i === currentIndex && state !== "done" ? <span className="caret" /> : null}
+              {i === caretInSlice && state !== "done" ? <span className="caret" /> : null}
             </span>
           ))}
         </div>

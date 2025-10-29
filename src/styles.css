@@ -4,16 +4,22 @@ html, body, #root { height: 100%; }
 body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px; display:flex; flex-direction:column; gap:16px; }
 
+/* Minimal toolbar with compact dropdown */
+.toolbar { display:flex; align-items:center; gap:12px; }
+.mode { display:flex; align-items:center; gap:8px; }
+.mode-label { color:var(--muted); font-size:12px; letter-spacing:.06em; text-transform:uppercase; }
+.mode-select {
+  background:#131826; color:#e8edff; border:1px solid #232a3c; border-radius:10px;
+  padding:6px 10px; outline:none; appearance:none;
+}
+.mode-select:focus { border-color:#7aa2f7; }
+
 .topbar { display:flex; align-items:center; gap:16px; }
 .stat { background:#151821; padding:6px 10px; border-radius:10px; color:var(--muted); }
 .stat strong { color:var(--fg); margin-right:6px; }
 .spacer { flex:1; }
 .btn { background:#1a1f2b; border:1px solid #2a3142; color:#d6d6d6; padding:6px 12px; border-radius:10px; cursor:pointer; }
 .btn:hover { border-color:#3a445a; }
-
-.tabs { display:flex; align-items:center; gap:8px; }
-.tab { background:#131826; border:1px solid #232a3c; color:#cfd6e6; padding:6px 10px; border-radius:10px; cursor:pointer; }
-.tab.active { border-color:#7aa2f7; color:#e8edff; box-shadow:0 0 0 1px #7aa2f7 inset; }
 
 .stage { background:#0e121a; border:1px solid #1a2130; border-radius:16px; padding:24px; min-height: 280px; display:flex; align-items:center; }
 .text { font-size:18px; line-height:1.9; word-wrap:break-word; white-space:pre-wrap; }
