@@ -4,7 +4,6 @@ import "./styles.css";
 
 type TestState = "idle" | "running" | "done";
 
-const leadingSpaces = (s: string) => (s.match(/^( +)/)?.[1].length ?? 0);
 const getPrevLine = (t: string) => {
   const k = t.lastIndexOf("\n");
   return k === -1 ? t : t.slice(k + 1);
@@ -30,6 +29,7 @@ export default function App() {
   const [state, setState] = useState<TestState>("idle");
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [endedAt, setEndedAt] = useState<number | null>(null);
+  const [autoIndent, setAutoIndent] = useState<boolean>(true);
   const hiddenRef = useRef<HTMLTextAreaElement>(null);
 
   // Focus once on mount
@@ -37,13 +37,20 @@ export default function App() {
     hiddenRef.current?.focus();
   }, []);
 
-  // Scoped focus: don't steal focus from toolbar/dropdown
+  // Scoped focus so the dropdown stays open
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       const el = e.target as HTMLElement;
       if (el.closest(".toolbar")) return;
       const tag = el.tagName.toLowerCase();
-      if (tag === "select" || tag === "button" || tag === "input" || tag === "textarea" || el.isContentEditable) return;
+      if (
+        tag === "select" ||
+        tag === "button" ||
+        tag === "input" ||
+        tag === "textarea" ||
+        el.isContentEditable
+      )
+        return;
       hiddenRef.current?.focus();
     };
     document.addEventListener("mousedown", onMouseDown);
@@ -54,13 +61,18 @@ export default function App() {
   const { accuracy, wpm } = useMemo(() => {
     let ok = 0;
     for (let i = 0; i < input.length; i++) if (input[i] === target[i]) ok++;
-    const elapsedMin = Math.max(((endedAt ?? Date.now()) - (startedAt ?? Date.now())) / 60000, 1 / 60000);
-    const grossWpm = Math.max(Math.round((ok / 5) / elapsedMin), 0);
-    const acc = input.length ? Math.max(0, Math.round((ok / input.length) * 100)) : 100;
+    const elapsedMin = Math.max(
+      ((endedAt ?? Date.now()) - (startedAt ?? Date.now())) / 60000,
+      1 / 60000
+    );
+    const grossWpm = Math.max(Math.round(ok / 5 / elapsedMin), 0);
+    const acc = input.length
+      ? Math.max(0, Math.round((ok / input.length) * 100))
+      : 100;
     return { accuracy: acc, wpm: grossWpm };
   }, [input, target, startedAt, endedAt]);
 
-  // Start/finish
+  // Start/finish transitions
   useEffect(() => {
     if (state === "idle" && input.length > 0) {
       setState("running");
@@ -82,21 +94,20 @@ export default function App() {
     setEndedAt(null);
     hiddenRef.current?.focus();
   }
-
   function switchConcept(c: Concept) {
     setConcept(c);
     restart(undefined, c);
   }
 
-  // Typing handlers
+  // No space-skipping while typing; Enter controls indentation
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    const next = e.target.value;
-    setInput(next.length <= target.length ? next : next.slice(0, target.length));
+    if (state === "done") return;
+    const raw = e.target.value;
+    const nextClamped = raw.length <= target.length ? raw : raw.slice(0, target.length);
+    setInput(nextClamped);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    const idx = input.length;
-
     // Cmd/Ctrl+Enter → restart
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -104,52 +115,67 @@ export default function App() {
       return;
     }
 
-    // Tab → skip indentation spaces/tabs present in target
+    // If done, ignore
+    if (state === "done") return;
+
+    const idx = input.length;
+
+    // Tab → manual skip (optional)
     if (e.key === "Tab") {
       e.preventDefault();
-      if (idx >= target.length) return;
-      const run = consumeWhile(target, idx, isSpace);
-      if (run.length > 0) setInput((p) => (p + run).slice(0, target.length));
+      if (idx < target.length) {
+        const run = consumeWhile(target, idx, (c) => c === " " || c === "\t");
+        if (run.length) setInput((p) => (p + run).slice(0, target.length));
+      }
       return;
     }
 
-    // Enter → newline (consume block gaps); smart indent after ':'
+    // Enter → newline + EXACT target indent (no synthesis at all)
     if (e.key === "Enter") {
       e.preventDefault();
-      let ins = "";
-      if (idx < target.length && isNL(target[idx])) ins = consumeWhile(target, idx, isNL);
-      else ins = "\n";
-      const prev = getPrevLine(input);
-      if (prev.trimEnd().endsWith(":")) ins += " ".repeat(leadingSpaces(prev) + 4);
-      setInput((p) => (p + ins).slice(0, target.length));
+      setInput((prev) => {
+        const caret = prev.length;
+
+        // 1) Insert newline(s) present at caret in target, else single "\n"
+        let add =
+          caret < target.length && isNL(target[caret])
+            ? consumeWhile(target, caret, isNL)
+            : "\n";
+
+        if (autoIndent) {
+          // 2) Copy the target's indent after those newline(s); may be empty
+          const after = prev.length + add.length;
+          if (after < target.length) {
+            add += consumeWhile(target, after, isSpace);
+          }
+          // No fallback "+4 after ':'" — always mirror target, fixes gaps/dedents.
+        }
+
+        return (prev + add).slice(0, target.length);
+      });
       return;
     }
   }
 
-  // ---------- Visible window (10 lines: 2 above, current as 3rd, 7 after) ----------
-  const BEFORE = 2;              // lines above current
-  const WINDOW = 10;             // total visible lines
+  // ------ 10-line window (current line fixed at row 3 once ≥2 lines typed) ------
+  const BEFORE = 2;
+  const WINDOW = 10;
   const lineStarts = useMemo(() => computeLineStarts(target), [target]);
   const totalLines = lineStarts.length;
 
-  // current line = number of typed newlines (clamped)
   const currentLine = useMemo(() => {
     const typed = input.match(/\n/g)?.length ?? 0;
     return Math.min(typed, totalLines - 1);
   }, [input, totalLines]);
 
-  // place current line at index 2 (third visible line) when possible
   const maxStart = Math.max(0, totalLines - WINDOW);
-  const desiredStart = currentLine - BEFORE;
-  const startLine = Math.max(0, Math.min(desiredStart, maxStart));
+  const desiredStart = currentLine < BEFORE ? 0 : currentLine - BEFORE;
+  const startLine = Math.min(desiredStart, maxStart);
   const endLine = Math.min(totalLines, startLine + WINDOW);
 
   const startChar = lineStarts[startLine] ?? 0;
   const endChar = endLine < totalLines ? lineStarts[endLine] : target.length;
 
-  const visibleTarget = target.slice(startChar, endChar);
-
-  // Slice render statuses
   const visibleChars = useMemo(() => {
     const arr: { ch: string; status: "pending" | "correct" | "wrong" }[] = [];
     for (let gi = startChar; gi < endChar; gi++) {
@@ -160,7 +186,18 @@ export default function App() {
     return arr;
   }, [target, input, startChar, endChar]);
 
-  const caretInSlice = Math.max(0, Math.min(input.length - startChar, visibleTarget.length));
+  const fullChars = useMemo(() => {
+    if (state !== "done") return null;
+    const arr: { ch: string; status: "pending" | "correct" | "wrong" }[] = [];
+    for (let gi = 0; gi < target.length; gi++) {
+      let status: "pending" | "correct" | "wrong" = "pending";
+      if (gi < input.length) status = input[gi] === target[gi] ? "correct" : "wrong";
+      arr.push({ ch: target[gi], status });
+    }
+    return arr;
+  }, [state, target, input]);
+
+  const caretInSlice = Math.max(0, Math.min(input.length - startChar, endChar - startChar));
   const progress = Math.round((input.length / target.length) * 100);
 
   return (
@@ -175,11 +212,25 @@ export default function App() {
             onChange={(e) => switchConcept(e.target.value as Concept)}
           >
             {CONCEPTS.map(({ id, label }) => (
-              <option key={id} value={id}>{label}</option>
+              <option key={id} value={id}>
+                {label}
+              </option>
             ))}
           </select>
         </label>
+
         <div className="spacer" />
+
+        {/* Auto-indent toggle */}
+        <label className="mode" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={autoIndent}
+            onChange={(e) => setAutoIndent(e.target.checked)}
+          />
+          <span className="mode-label">Auto-indent</span>
+        </label>
+
         <button className="btn" onClick={() => restart()}>Restart</button>
         <button className="btn" onClick={() => restart(4)}>New (4 blocks)</button>
       </div>
@@ -192,6 +243,7 @@ export default function App() {
         onKeyDown={handleKeyDown}
         className="ghost-input"
         rows={1}
+        readOnly={state === "done"}
         spellCheck={false}
         autoCorrect="off"
         autoCapitalize="off"
@@ -205,24 +257,48 @@ export default function App() {
         <div className="stat"><strong>PROG</strong> {progress}%</div>
       </header>
 
-      {/* Typing stage — 10-line window (2 above, current as 3rd, 7 after) */}
-      <main className="stage" onClick={() => hiddenRef.current?.focus()}>
-        <div className="text">
-          {visibleChars.map((c, i) => (
-            <span
-              key={i}
-              className={c.status === "correct" ? "char ok" : c.status === "wrong" ? "char bad" : "char"}
-            >
-              {c.ch === " " ? "\u00A0" : c.ch}
-              {i === caretInSlice && state !== "done" ? <span className="caret" /> : null}
-            </span>
-          ))}
-        </div>
+      {/* Stage */}
+      <main
+        className={`stage ${state === "done" ? "done" : ""}`}
+        onClick={() => hiddenRef.current?.focus()}
+      >
+        {state !== "done" ? (
+          <div className="text">
+            {visibleChars.map((c, i) => (
+              <span
+                key={i}
+                className={
+                  c.status === "correct" ? "char ok" :
+                  c.status === "wrong"   ? "char bad" : "char"
+                }
+              >
+                {c.ch === " " ? "\u00A0" : c.ch}
+                {i === caretInSlice ? <span className="caret" /> : null}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="text text-scroll">
+            {fullChars!.map((c, i) => (
+              <span
+                key={i}
+                className={
+                  c.status === "correct" ? "char ok" :
+                  c.status === "wrong"   ? "char bad" : "char"
+                }
+              >
+                {c.ch === " " ? "\u00A0" : c.ch}
+              </span>
+            ))}
+          </div>
+        )}
       </main>
 
       {state === "done" && (
         <footer className="results">
-          <div>Finished — <strong>{wpm} WPM</strong>, <strong>{accuracy}%</strong> accuracy.</div>
+          <div>
+            Finished — <strong>{wpm} WPM</strong>, <strong>{accuracy}%</strong> accuracy.
+          </div>
           <button className="btn" onClick={() => restart()}>Try Again</button>
         </footer>
       )}
