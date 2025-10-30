@@ -18,11 +18,47 @@ body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 ui-monospa
 .stat { background:#151821; padding:6px 10px; border-radius:10px; color:var(--muted); }
 .stat strong { color:var(--fg); margin-right:6px; }
 .spacer { flex:1; }
-.btn { background:#1a1f2b; border:1px solid #2a3142; color:#d6d6d6; padding:6px 12px; border-radius:10px; cursor:pointer; }
-.btn:hover { border-color:#3a445a; }
 
-.stage { background:#0e121a; border:1px solid #1a2130; border-radius:16px; padding:24px; min-height: 280px; display:flex; align-items:center; }
-.text { font-size:18px; line-height:1.9; word-wrap:break-word; white-space:pre-wrap; }
+/* Cleaner Restart button */
+.btn {
+  background: linear-gradient(180deg, #1a1f2b, #171c27);
+  border:1px solid #2a3142;
+  color:#dfe3ec;
+  padding:6px 14px;
+  border-radius:10px;
+  cursor:pointer;
+  transition: border-color .15s, transform .05s;
+}
+.btn:hover { border-color:#3a445a; }
+.btn:active { transform: translateY(1px); }
+
+/* -------- Resizable stage wrapper -------- */
+.stage-wrap {
+  position: relative;
+  background:#0e121a;
+  border:1px solid #1a2130;
+  border-radius:16px;
+  padding:0;
+  min-height: 220px;
+  max-height: 720px; /* hard cap; dynamic cap enforced in JS */
+  display:flex;
+  align-items:stretch;
+  overflow:hidden; /* keep content clean inside rounded corners */
+}
+
+/* Top-align text to avoid overlap when small */
+.stage {
+  flex: 1;
+  border-radius:16px;
+  padding:28px 24px 36px; /* extra bottom so handle doesn't overlap text */
+  display:flex;
+  align-items:flex-start;
+  overflow:auto;
+  background: transparent;
+  border: none;
+}
+
+.text { line-height:1.9; word-wrap:break-word; white-space:pre-wrap; }
 .char { position:relative; color:#6f7480; }
 .char.ok { color:#d7dde8; }
 .char.bad { color:var(--bad); background:rgba(255,107,107,0.12); border-bottom:1px solid rgba(255,107,107,0.4); }
@@ -33,3 +69,65 @@ body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 ui-monospa
 
 .results { display:flex; align-items:center; gap:16px; color:var(--muted); }
 .results strong { color:var(--fg); }
+
+/* Centered hint */
+.center-hint {
+  font-size: 11px;
+  opacity: 0.55;
+  text-align: center;
+  margin-top: 8px;
+  user-select: none;
+}
+
+/* ---------- Settings (bottom-right text link + card) ---------- */
+.settings-link-fixed {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  font-size: 11px;
+  opacity: 0.6;
+  color: var(--fg);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  z-index: 15;
+}
+.settings-link-fixed:hover { text-decoration: underline; opacity: 0.8; }
+
+.settings-card {
+  position: fixed;
+  right: 18px;
+  bottom: 48px; /* sits above the link */
+  min-width: 260px;
+  padding: 12px;
+  background:#0e121a;
+  border:1px solid #1a2130;
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+  z-index: 20;
+}
+.settings-row { display:flex; align-items:center; gap:10px; padding: 6px 2px; }
+.settings-label { flex:1; color:var(--muted); font-size:12px; letter-spacing:.06em; text-transform:uppercase; }
+.settings-input {
+  width:72px; background:#131826; color:#e8edff; border:1px solid #232a3c; border-radius:8px; padding:4px 6px;
+}
+.mini {
+  background:#141a27; border:1px solid #232a3c; color:#d6d6d6; padding:4px 8px; border-radius:8px; cursor:pointer;
+}
+.mini:hover { border-color:#3a445a; }
+
+/* Ultra-minimal drag handle */
+.resize-handle {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 8px;
+  width: 28px;
+  height: 4px;
+  border-radius: 3px;
+  background: #3a445a;
+  cursor: ns-resize;
+  opacity: 0.9;
+}
+.resize-handle:hover { opacity: 1; }

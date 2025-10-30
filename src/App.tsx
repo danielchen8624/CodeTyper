@@ -31,12 +31,46 @@ export default function App() {
   // ---- state ----
   const [lang, setLang] = useState<Lang>("python");
   const [concept, setConcept] = useState<Concept>("loops");
-  const [target, setTarget] = useState<string>(generateSnippet(concept, 3, lang));
+  const [blocks, setBlocks] = useState<number>(3);
+  const [autoIndent, setAutoIndent] = useState<boolean>(true);
+  const [repeatSame, setRepeatSame] = useState<boolean>(false);
+
+  const [target, setTarget] = useState<string>(generateSnippet(concept, blocks, lang));
+  const [lastTarget, setLastTarget] = useState<string>(target);
+
   const [input, setInput] = useState<string>("");
   const [state, setState] = useState<TestState>("idle");
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [endedAt, setEndedAt] = useState<number | null>(null);
-  const [autoIndent, setAutoIndent] = useState<boolean>(true);
+
+  const [showSettings, setShowSettings] = useState<boolean>(false);
+
+  // NEW: resizable panel (height ↔ font size)
+  const [panelH, setPanelH] = useState<number>(320);
+  const panelMin = 220;
+
+  // DOM ref to measure wrapper position for accurate cap
+  const stageWrapRef = useRef<HTMLDivElement>(null);
+
+  // keep ~1/5 of viewport free at bottom (≥120px), computed from actual on-screen top
+  const getPanelMax = () => {
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    const reserve = Math.max(120, Math.round(vh / 5));
+    const top =
+      stageWrapRef.current ? Math.max(0, stageWrapRef.current.getBoundingClientRect().top) : 0;
+    const cap = vh - reserve - top; // bottom cannot pass vh - reserve
+    return Math.max(panelMin, Math.min(720, cap));
+  };
+
+  // 18px at 320px, clamp 14–32px
+  const fontPx = Math.round(Math.min(32, Math.max(14, (panelH / 320) * 18)));
+
+  const dragRef = useRef<{ dragging: boolean; startY: number; startH: number }>({
+    dragging: false,
+    startY: 0,
+    startH: 320,
+  });
+
   const hiddenRef = useRef<HTMLTextAreaElement>(null);
 
   const isMac =
@@ -48,24 +82,60 @@ export default function App() {
     hiddenRef.current?.focus();
   }, []);
 
-  // Scoped focus so the dropdown stays open
+  // Scoped focus so dropdowns/settings/handle stay usable
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       const el = e.target as HTMLElement;
-      if (el.closest(".toolbar")) return;
-      const tag = el.tagName.toLowerCase();
       if (
-        tag === "select" ||
-        tag === "button" ||
-        tag === "input" ||
-        tag === "textarea" ||
-        el.isContentEditable
+        el.closest(".toolbar") ||
+        el.closest(".settings-card") ||
+        el.closest(".settings-link-fixed") ||
+        el.closest(".resize-handle")
       )
         return;
+      const tag = el.tagName.toLowerCase();
+      if (["select", "button", "input", "textarea"].includes(tag) || el.isContentEditable) return;
       hiddenRef.current?.focus();
     };
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
+  }, []);
+
+  // Keep cap in sync with viewport changes
+  useEffect(() => {
+    function onResize() {
+      setPanelH((h) => Math.min(h, getPanelMax()));
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Drag handlers
+  function onDragStart(e: React.MouseEvent<HTMLDivElement>) {
+    dragRef.current.dragging = true;
+    dragRef.current.startY = e.clientY;
+    dragRef.current.startH = panelH;
+    document.body.style.userSelect = "none";
+  }
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!dragRef.current.dragging) return;
+      const dy = e.clientY - dragRef.current.startY;
+      const cap = getPanelMax();
+      const next = Math.min(cap, Math.max(panelMin, dragRef.current.startH + dy));
+      setPanelH(next);
+    }
+    function onUp() {
+      if (!dragRef.current.dragging) return;
+      dragRef.current.dragging = false;
+      document.body.style.userSelect = "";
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
   }, []);
 
   // Stats
@@ -96,11 +166,20 @@ export default function App() {
   }, [input, target.length, state]);
 
   // ---- controls ----
-  function restart(blocks?: number, nextConcept?: Concept, nextLang?: Lang) {
+  function restart(nextBlocks?: number, nextConcept?: Concept, nextLang?: Lang) {
     const c = nextConcept ?? concept;
     const L = nextLang ?? lang;
-    const b = blocks ?? 3;
-    setTarget(generateSnippet(c, b, L));
+    const b = nextBlocks ?? blocks;
+
+    let next = target;
+    if (!repeatSame || target.length === 0) {
+      next = generateSnippet(c, b, L);
+      setLastTarget(next);
+    } else {
+      next = lastTarget;
+    }
+
+    setTarget(next);
     setInput("");
     setState("idle");
     setStartedAt(null);
@@ -110,7 +189,21 @@ export default function App() {
 
   function switchConcept(c: Concept) {
     setConcept(c);
-    restart(undefined, c, undefined);
+    if (repeatSame && lastTarget) {
+      setTarget(lastTarget);
+      setInput("");
+      setState("idle");
+      setStartedAt(null);
+      setEndedAt(null);
+    } else {
+      const fresh = generateSnippet(c, blocks, lang);
+      setTarget(fresh);
+      setLastTarget(fresh);
+      setInput("");
+      setState("idle");
+      setStartedAt(null);
+      setEndedAt(null);
+    }
   }
 
   function switchLang(L: Lang) {
@@ -118,15 +211,20 @@ export default function App() {
     const supported = SUPPORTED[L];
     const nextConcept = supported.includes(concept) ? concept : supported[0];
     setConcept(nextConcept);
-    restart(undefined, nextConcept, L);
+    const fresh = repeatSame ? lastTarget : generateSnippet(nextConcept, blocks, L);
+    setTarget(fresh);
+    if (!repeatSame) setLastTarget(fresh);
+    setInput("");
+    setState("idle");
+    setStartedAt(null);
+    setEndedAt(null);
   }
 
   // Typing handlers (no space-skipping while typing; Enter mirrors target)
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     if (state === "done") return;
     const raw = e.target.value;
-    const nextClamped =
-      raw.length <= target.length ? raw : raw.slice(0, target.length);
+    const nextClamped = raw.length <= target.length ? raw : raw.slice(0, target.length);
     setInput(nextClamped);
   }
 
@@ -196,8 +294,7 @@ export default function App() {
     const arr: { ch: string; status: "pending" | "correct" | "wrong" }[] = [];
     for (let gi = startChar; gi < endChar; gi++) {
       let status: "pending" | "correct" | "wrong" = "pending";
-      if (gi < input.length)
-        status = input[gi] === target[gi] ? "correct" : "wrong";
+      if (gi < input.length) status = input[gi] === target[gi] ? "correct" : "wrong";
       arr.push({ ch: target[gi], status });
     }
     return arr;
@@ -208,17 +305,13 @@ export default function App() {
     const arr: { ch: string; status: "pending" | "correct" | "wrong" }[] = [];
     for (let gi = 0; gi < target.length; gi++) {
       let status: "pending" | "correct" | "wrong" = "pending";
-      if (gi < input.length)
-        status = input[gi] === target[gi] ? "correct" : "wrong";
+      if (gi < input.length) status = input[gi] === target[gi] ? "correct" : "wrong";
       arr.push({ ch: target[gi], status });
     }
     return arr;
   }, [state, target, input]);
 
-  const caretInSlice = Math.max(
-    0,
-    Math.min(input.length - startChar, endChar - startChar)
-  );
+  const caretInSlice = Math.max(0, Math.min(input.length - startChar, endChar - startChar));
   const progress = Math.round((input.length / target.length) * 100);
 
   const availableConcepts = SUPPORTED[lang];
@@ -250,30 +343,15 @@ export default function App() {
             value={concept}
             onChange={(e) => switchConcept(e.target.value as Concept)}
           >
-            {CONCEPTS.filter((c) => availableConcepts.includes(c.id)).map(
-              ({ id, label }) => (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              )
-            )}
+            {CONCEPTS.filter((c) => availableConcepts.includes(c.id)).map(({ id, label }) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
           </select>
         </label>
 
         <div className="spacer" />
-
-        {/* Auto-indent toggle */}
-        <label
-          className="mode"
-          style={{ display: "flex", alignItems: "center", gap: 8 }}
-        >
-          <input
-            type="checkbox"
-            checked={autoIndent}
-            onChange={(e) => setAutoIndent(e.target.checked)}
-          />
-          <span className="mode-label">Auto-indent</span>
-        </label>
 
         {/* Restart only */}
         <button className="btn" onClick={() => restart()}>
@@ -309,72 +387,111 @@ export default function App() {
         </div>
       </header>
 
-      {/* Stage */}
-      <main
-        className={`stage ${state === "done" ? "done" : ""}`}
+      {/* Stage (resizable) */}
+      <div
+        ref={stageWrapRef}
+        className="stage-wrap"
+        style={{ height: panelH }}
         onClick={() => hiddenRef.current?.focus()}
       >
-        {state !== "done" ? (
-          <div className="text">
-            {visibleChars.map((c, i) => (
-              <span
-                key={i}
-                className={
-                  c.status === "correct"
-                    ? "char ok"
-                    : c.status === "wrong"
-                    ? "char bad"
-                    : "char"
-                }
-              >
-                {c.ch === " " ? "\u00A0" : c.ch}
-                {i === caretInSlice ? <span className="caret" /> : null}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <div className="text text-scroll">
-            {fullChars!.map((c, i) => (
-              <span
-                key={i}
-                className={
-                  c.status === "correct"
-                    ? "char ok"
-                    : c.status === "wrong"
-                    ? "char bad"
-                    : "char"
-                }
-              >
-                {c.ch === " " ? "\u00A0" : c.ch}
-              </span>
-            ))}
-          </div>
-        )}
-      </main>
+        <main className={`stage ${state === "done" ? "done" : ""}`}>
+          {state !== "done" ? (
+            <div className="text" style={{ fontSize: `${fontPx}px` }}>
+              {visibleChars.map((c, i) => (
+                <span
+                  key={i}
+                  className={c.status === "correct" ? "char ok" : c.status === "wrong" ? "char bad" : "char"}
+                >
+                  {c.ch === " " ? "\u00A0" : c.ch}
+                  {i === caretInSlice ? <span className="caret" /> : null}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="text text-scroll" style={{ fontSize: `${fontPx}px` }}>
+              {fullChars!.map((c, i) => (
+                <span
+                  key={i}
+                  className={c.status === "correct" ? "char ok" : c.status === "wrong" ? "char bad" : "char"}
+                >
+                  {c.ch === " " ? "\u00A0" : c.ch}
+                </span>
+              ))}
+            </div>
+          )}
+        </main>
 
-      {/* Minimal shortcut hint */}
-      <div
-        style={{
-          fontSize: 11,
-          opacity: 0.55,
-          textAlign: "center",
-          marginTop: 8,
-          userSelect: "none",
-        }}
-      >
+        {/* ultra-minimal drag handle */}
+        <div
+          className="resize-handle"
+          onMouseDown={onDragStart}
+          role="separator"
+          aria-label="Resize editor"
+          aria-orientation="vertical"
+          tabIndex={-1}
+        />
+      </div>
+
+      {/* Centered hint */}
+      <div className="center-hint">
         {isMac ? "⌘" : "Ctrl"} + Return to restart
       </div>
 
       {state === "done" && (
         <footer className="results">
           <div>
-            Finished — <strong>{wpm} WPM</strong>, <strong>{accuracy}%</strong>{" "}
-            accuracy.
+            Finished — <strong>{wpm} WPM</strong>, <strong>{accuracy}%</strong> accuracy.
           </div>
-          <button className="btn" onClick={() => restart()}>
-            Try Again
-          </button>
         </footer>
+      )}
+
+      {/* Subtle Settings link (fixed bottom-right) */}
+      <button
+        className="settings-link-fixed"
+        onClick={() => setShowSettings((s) => !s)}
+        aria-label="Open settings"
+      >
+        Settings
+      </button>
+
+      {showSettings && (
+        <div className="settings-card">
+          <div className="settings-row">
+            <label className="settings-label">Blocks</label>
+            <input
+              className="settings-input"
+              type="number"
+              min={1}
+              max={10}
+              value={blocks}
+              onChange={(e) => {
+                const v = Math.max(1, Math.min(10, Number(e.target.value) || 1));
+                setBlocks(v);
+              }}
+            />
+            <button className="mini" onClick={() => restart()}>
+              Apply
+            </button>
+          </div>
+
+          <div className="settings-row">
+            <label className="settings-label">Auto-indent</label>
+            <input
+              type="checkbox"
+              checked={autoIndent}
+              onChange={(e) => setAutoIndent(e.target.checked)}
+            />
+          </div>
+
+          <div className="settings-row">
+            <label className="settings-label">Repeat same test</label>
+            <input
+              type="checkbox"
+              checked={repeatSame}
+              onChange={(e) => setRepeatSame(e.target.checked)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
