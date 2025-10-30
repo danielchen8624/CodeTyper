@@ -27,6 +27,14 @@ function computeLineStarts(text: string): number[] {
   return starts;
 }
 
+// ---- layout constants for exact-fit math ----
+const PAD_T = 28;            // match CSS .stage padding-top
+const PAD_B = 36;            // match CSS .stage padding-bottom
+const LINES = 10;            // fixed visible lines
+const LINE_H = 1.9;          // match CSS .text line-height
+const MIN_FONT = 14;         // px
+const MAX_FONT = 32;         // px
+
 export default function App() {
   // ---- state ----
   const [lang, setLang] = useState<Lang>("python");
@@ -45,12 +53,20 @@ export default function App() {
 
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
-  // NEW: resizable panel (height ↔ font size)
+  // panel height (outer)
   const [panelH, setPanelH] = useState<number>(320);
-  const panelMin = 220;
 
   // DOM ref to measure wrapper position for accurate cap
   const stageWrapRef = useRef<HTMLDivElement>(null);
+  const hiddenRef = useRef<HTMLTextAreaElement>(null);
+
+  // derive font size so 10 lines fill inner height exactly
+  const innerHeight = Math.max(0, panelH - PAD_T - PAD_B);
+  const fontPxRaw = innerHeight / (LINES * LINE_H);
+  const fontPx = Math.min(MAX_FONT, Math.max(MIN_FONT, fontPxRaw)); // continuous scaling, clamped
+
+  // dynamic min height so 10 lines always fit at MIN_FONT
+  const getPanelMin = () => PAD_T + PAD_B + LINES * LINE_H * MIN_FONT;
 
   // keep ~1/5 of viewport free at bottom (≥120px), computed from actual on-screen top
   const getPanelMax = () => {
@@ -58,20 +74,15 @@ export default function App() {
     const reserve = Math.max(120, Math.round(vh / 5));
     const top =
       stageWrapRef.current ? Math.max(0, stageWrapRef.current.getBoundingClientRect().top) : 0;
-    const cap = vh - reserve - top; // bottom cannot pass vh - reserve
-    return Math.max(panelMin, Math.min(720, cap));
+    const cap = vh - reserve - top;
+    return Math.max(getPanelMin(), Math.min(720, cap));
   };
-
-  // 18px at 320px, clamp 14–32px
-  const fontPx = Math.round(Math.min(32, Math.max(14, (panelH / 320) * 18)));
 
   const dragRef = useRef<{ dragging: boolean; startY: number; startH: number }>({
     dragging: false,
     startY: 0,
     startH: 320,
   });
-
-  const hiddenRef = useRef<HTMLTextAreaElement>(null);
 
   const isMac =
     typeof navigator !== "undefined" &&
@@ -80,6 +91,11 @@ export default function App() {
   // Focus once on mount
   useEffect(() => {
     hiddenRef.current?.focus();
+  }, []);
+
+  // Ensure initial height respects computed min
+  useEffect(() => {
+    setPanelH((h) => Math.max(h, getPanelMin()));
   }, []);
 
   // Scoped focus so dropdowns/settings/handle stay usable
@@ -104,7 +120,11 @@ export default function App() {
   // Keep cap in sync with viewport changes
   useEffect(() => {
     function onResize() {
-      setPanelH((h) => Math.min(h, getPanelMax()));
+      setPanelH((h) => {
+        const min = getPanelMin();
+        const max = getPanelMax();
+        return Math.min(max, Math.max(min, h));
+      });
     }
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -121,9 +141,10 @@ export default function App() {
     function onMove(e: MouseEvent) {
       if (!dragRef.current.dragging) return;
       const dy = e.clientY - dragRef.current.startY;
-      const cap = getPanelMax();
-      const next = Math.min(cap, Math.max(panelMin, dragRef.current.startH + dy));
-      setPanelH(next);
+      const min = getPanelMin();
+      const max = getPanelMax();
+      const next = Math.min(max, Math.max(min, dragRef.current.startH + dy));
+      setPanelH(next); // fontPx recomputes continuously from panelH, no rounding
     }
     function onUp() {
       if (!dragRef.current.dragging) return;
@@ -272,9 +293,9 @@ export default function App() {
     }
   }
 
-  // ------ 10-line window (current line fixed at row 3 once ≥2 lines typed) ------
+  // ------ fixed 10-line window ------
   const BEFORE = 2;
-  const WINDOW = 10;
+  const WINDOW = LINES;
   const lineStarts = useMemo(() => computeLineStarts(target), [target]);
   const totalLines = lineStarts.length;
 

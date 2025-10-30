@@ -39,26 +39,32 @@ body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 ui-monospa
   border:1px solid #1a2130;
   border-radius:16px;
   padding:0;
-  min-height: 220px;
-  max-height: 720px; /* hard cap; dynamic cap enforced in JS */
+  min-height: 220px;     /* safety; true min enforced in JS */
+  max-height: 720px;     /* safety; true max enforced in JS */
   display:flex;
   align-items:stretch;
   overflow:hidden; /* keep content clean inside rounded corners */
 }
 
-/* Top-align text to avoid overlap when small */
+/* Top-align text; vertical scroll only */
 .stage {
   flex: 1;
   border-radius:16px;
-  padding:28px 24px 36px; /* extra bottom so handle doesn't overlap text */
+  padding:28px 24px 36px; /* match PAD_T / PAD_B */
   display:flex;
   align-items:flex-start;
-  overflow:auto;
+  overflow: hidden auto;   /* vertical scroll; no horizontal jiggle */
   background: transparent;
   border: none;
 }
 
-.text { line-height:1.9; word-wrap:break-word; white-space:pre-wrap; }
+/* No wrapping so the same characters/lines remain visible */
+.text {
+  line-height: 1.9;         /* match LINE_H */
+  word-wrap: normal;
+  white-space: pre;          /* no wrapping — identical lines regardless of size */
+  overflow-x: auto;          /* horizontal scroll if needed */
+}
 .char { position:relative; color:#6f7480; }
 .char.ok { color:#d7dde8; }
 .char.bad { color:var(--bad); background:rgba(255,107,107,0.12); border-bottom:1px solid rgba(255,107,107,0.4); }
