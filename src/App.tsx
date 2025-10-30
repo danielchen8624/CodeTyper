@@ -1,13 +1,18 @@
+// App.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CONCEPTS, generateSnippet, type Concept } from "./lib/generators";
+import {
+  CONCEPTS,
+  LANGS,
+  SUPPORTED,
+  generateSnippet,
+  type Concept,
+  type Lang,
+} from "./lib/generators";
 import "./styles.css";
 
 type TestState = "idle" | "running" | "done";
 
-const getPrevLine = (t: string) => {
-  const k = t.lastIndexOf("\n");
-  return k === -1 ? t : t.slice(k + 1);
-};
+// -------- helpers --------
 const consumeWhile = (T: string, i: number, p: (c: string) => boolean) => {
   let j = i;
   while (j < T.length && p(T[j])) j++;
@@ -23,14 +28,20 @@ function computeLineStarts(text: string): number[] {
 }
 
 export default function App() {
+  // ---- state ----
+  const [lang, setLang] = useState<Lang>("python");
   const [concept, setConcept] = useState<Concept>("loops");
-  const [target, setTarget] = useState<string>(generateSnippet(concept, 3));
+  const [target, setTarget] = useState<string>(generateSnippet(concept, 3, lang));
   const [input, setInput] = useState<string>("");
   const [state, setState] = useState<TestState>("idle");
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [endedAt, setEndedAt] = useState<number | null>(null);
   const [autoIndent, setAutoIndent] = useState<boolean>(true);
   const hiddenRef = useRef<HTMLTextAreaElement>(null);
+
+  const isMac =
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPad/.test(navigator.platform || "");
 
   // Focus once on mount
   useEffect(() => {
@@ -84,43 +95,54 @@ export default function App() {
     }
   }, [input, target.length, state]);
 
-  function restart(blocks?: number, next?: Concept) {
-    const c = next ?? concept;
+  // ---- controls ----
+  function restart(blocks?: number, nextConcept?: Concept, nextLang?: Lang) {
+    const c = nextConcept ?? concept;
+    const L = nextLang ?? lang;
     const b = blocks ?? 3;
-    setTarget(generateSnippet(c, b));
+    setTarget(generateSnippet(c, b, L));
     setInput("");
     setState("idle");
     setStartedAt(null);
     setEndedAt(null);
     hiddenRef.current?.focus();
   }
+
   function switchConcept(c: Concept) {
     setConcept(c);
-    restart(undefined, c);
+    restart(undefined, c, undefined);
   }
 
-  // No space-skipping while typing; Enter controls indentation
+  function switchLang(L: Lang) {
+    setLang(L);
+    const supported = SUPPORTED[L];
+    const nextConcept = supported.includes(concept) ? concept : supported[0];
+    setConcept(nextConcept);
+    restart(undefined, nextConcept, L);
+  }
+
+  // Typing handlers (no space-skipping while typing; Enter mirrors target)
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     if (state === "done") return;
     const raw = e.target.value;
-    const nextClamped = raw.length <= target.length ? raw : raw.slice(0, target.length);
+    const nextClamped =
+      raw.length <= target.length ? raw : raw.slice(0, target.length);
     setInput(nextClamped);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    // Cmd/Ctrl+Enter → restart
+    // ⌘/Ctrl + Enter → restart
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       restart();
       return;
     }
 
-    // If done, ignore
     if (state === "done") return;
 
     const idx = input.length;
 
-    // Tab → manual skip (optional)
+    // Tab → manual skip
     if (e.key === "Tab") {
       e.preventDefault();
       if (idx < target.length) {
@@ -130,27 +152,22 @@ export default function App() {
       return;
     }
 
-    // Enter → newline + EXACT target indent (no synthesis at all)
+    // Enter → newline(s) + EXACT target indent (no synthesis)
     if (e.key === "Enter") {
       e.preventDefault();
       setInput((prev) => {
         const caret = prev.length;
-
-        // 1) Insert newline(s) present at caret in target, else single "\n"
         let add =
           caret < target.length && isNL(target[caret])
             ? consumeWhile(target, caret, isNL)
             : "\n";
 
         if (autoIndent) {
-          // 2) Copy the target's indent after those newline(s); may be empty
           const after = prev.length + add.length;
           if (after < target.length) {
-            add += consumeWhile(target, after, isSpace);
+            add += consumeWhile(target, after, isSpace); // may be empty
           }
-          // No fallback "+4 after ':'" — always mirror target, fixes gaps/dedents.
         }
-
         return (prev + add).slice(0, target.length);
       });
       return;
@@ -169,8 +186,7 @@ export default function App() {
   }, [input, totalLines]);
 
   const maxStart = Math.max(0, totalLines - WINDOW);
-  const desiredStart = currentLine < BEFORE ? 0 : currentLine - BEFORE;
-  const startLine = Math.min(desiredStart, maxStart);
+  const startLine = Math.min(currentLine < BEFORE ? 0 : currentLine - BEFORE, maxStart);
   const endLine = Math.min(totalLines, startLine + WINDOW);
 
   const startChar = lineStarts[startLine] ?? 0;
@@ -180,7 +196,8 @@ export default function App() {
     const arr: { ch: string; status: "pending" | "correct" | "wrong" }[] = [];
     for (let gi = startChar; gi < endChar; gi++) {
       let status: "pending" | "correct" | "wrong" = "pending";
-      if (gi < input.length) status = input[gi] === target[gi] ? "correct" : "wrong";
+      if (gi < input.length)
+        status = input[gi] === target[gi] ? "correct" : "wrong";
       arr.push({ ch: target[gi], status });
     }
     return arr;
@@ -191,19 +208,41 @@ export default function App() {
     const arr: { ch: string; status: "pending" | "correct" | "wrong" }[] = [];
     for (let gi = 0; gi < target.length; gi++) {
       let status: "pending" | "correct" | "wrong" = "pending";
-      if (gi < input.length) status = input[gi] === target[gi] ? "correct" : "wrong";
+      if (gi < input.length)
+        status = input[gi] === target[gi] ? "correct" : "wrong";
       arr.push({ ch: target[gi], status });
     }
     return arr;
   }, [state, target, input]);
 
-  const caretInSlice = Math.max(0, Math.min(input.length - startChar, endChar - startChar));
+  const caretInSlice = Math.max(
+    0,
+    Math.min(input.length - startChar, endChar - startChar)
+  );
   const progress = Math.round((input.length / target.length) * 100);
 
+  const availableConcepts = SUPPORTED[lang];
+
+  // ---- UI ----
   return (
     <div className="wrap">
       {/* Toolbar */}
       <div className="toolbar">
+        <label className="mode">
+          <span className="mode-label">Lang</span>
+          <select
+            className="mode-select"
+            value={lang}
+            onChange={(e) => switchLang(e.target.value as Lang)}
+          >
+            {LANGS.map((L) => (
+              <option key={L.id} value={L.id}>
+                {L.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <label className="mode">
           <span className="mode-label">Mode</span>
           <select
@@ -211,18 +250,23 @@ export default function App() {
             value={concept}
             onChange={(e) => switchConcept(e.target.value as Concept)}
           >
-            {CONCEPTS.map(({ id, label }) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
+            {CONCEPTS.filter((c) => availableConcepts.includes(c.id)).map(
+              ({ id, label }) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              )
+            )}
           </select>
         </label>
 
         <div className="spacer" />
 
         {/* Auto-indent toggle */}
-        <label className="mode" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <label
+          className="mode"
+          style={{ display: "flex", alignItems: "center", gap: 8 }}
+        >
           <input
             type="checkbox"
             checked={autoIndent}
@@ -231,8 +275,10 @@ export default function App() {
           <span className="mode-label">Auto-indent</span>
         </label>
 
-        <button className="btn" onClick={() => restart()}>Restart</button>
-        <button className="btn" onClick={() => restart(4)}>New (4 blocks)</button>
+        {/* Restart only */}
+        <button className="btn" onClick={() => restart()}>
+          Restart
+        </button>
       </div>
 
       {/* Hidden textarea */}
@@ -252,9 +298,15 @@ export default function App() {
 
       {/* Stats */}
       <header className="topbar">
-        <div className="stat"><strong>WPM</strong> {wpm}</div>
-        <div className="stat"><strong>ACC</strong> {accuracy}%</div>
-        <div className="stat"><strong>PROG</strong> {progress}%</div>
+        <div className="stat">
+          <strong>WPM</strong> {wpm}
+        </div>
+        <div className="stat">
+          <strong>ACC</strong> {accuracy}%
+        </div>
+        <div className="stat">
+          <strong>PROG</strong> {progress}%
+        </div>
       </header>
 
       {/* Stage */}
@@ -268,8 +320,11 @@ export default function App() {
               <span
                 key={i}
                 className={
-                  c.status === "correct" ? "char ok" :
-                  c.status === "wrong"   ? "char bad" : "char"
+                  c.status === "correct"
+                    ? "char ok"
+                    : c.status === "wrong"
+                    ? "char bad"
+                    : "char"
                 }
               >
                 {c.ch === " " ? "\u00A0" : c.ch}
@@ -283,8 +338,11 @@ export default function App() {
               <span
                 key={i}
                 className={
-                  c.status === "correct" ? "char ok" :
-                  c.status === "wrong"   ? "char bad" : "char"
+                  c.status === "correct"
+                    ? "char ok"
+                    : c.status === "wrong"
+                    ? "char bad"
+                    : "char"
                 }
               >
                 {c.ch === " " ? "\u00A0" : c.ch}
@@ -294,12 +352,28 @@ export default function App() {
         )}
       </main>
 
+      {/* Minimal shortcut hint */}
+      <div
+        style={{
+          fontSize: 11,
+          opacity: 0.55,
+          textAlign: "center",
+          marginTop: 8,
+          userSelect: "none",
+        }}
+      >
+        {isMac ? "⌘" : "Ctrl"} + Return to restart
+      </div>
+
       {state === "done" && (
         <footer className="results">
           <div>
-            Finished — <strong>{wpm} WPM</strong>, <strong>{accuracy}%</strong> accuracy.
+            Finished — <strong>{wpm} WPM</strong>, <strong>{accuracy}%</strong>{" "}
+            accuracy.
           </div>
-          <button className="btn" onClick={() => restart()}>Try Again</button>
+          <button className="btn" onClick={() => restart()}>
+            Try Again
+          </button>
         </footer>
       )}
     </div>
