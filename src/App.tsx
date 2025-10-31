@@ -84,6 +84,9 @@ const MIN_FONT = 14;
 const MAX_FONT = 32;
 
 export default function App() {
+  // ---- auth stub ----
+  const [isSignedIn] = useState<boolean>(false); // modify when you wire auth
+
   // ---- state ----
   const [lang, setLang] = useState<Lang>("python");
   const [concept, setConcept] = useState<Concept>("loops");
@@ -181,10 +184,10 @@ export default function App() {
       const el = e.target as HTMLElement;
       if (
         el.closest(".topbar-mk") ||
-        el.closest(".mk-profile") ||            // NEW: profile button
+        el.closest(".mk-profile") ||
         el.closest(".settings-card") ||
         el.closest(".settings-link-fixed") ||
-        el.closest(".feedback-link-fixed") ||   // NEW: feedback link
+        el.closest(".feedback-link-fixed") ||
         el.closest(".resize-handle") ||
         el.closest(".center-actions")
       ) return;
@@ -503,9 +506,17 @@ export default function App() {
           <div className="mk-pill"><strong>PROG</strong>{progress}%</div>
         </div>
 
-        {/* NEW: Profile button at far right */}
+        {/* Profile button (routes to login if not signed in) */}
         <div className="mk-profile dim-on-focus" aria-label="Profile" title="Profile">
-          <button className="profile-btn" type="button">
+          <button
+            className="profile-btn"
+            type="button"
+            onClick={() => {
+              if (!isSignedIn) window.location.hash = "#/login";
+            }}
+            aria-label="Profile"
+            title="Profile"
+          >
             <span className="avatar-circle">DC</span>
           </button>
         </div>
@@ -606,7 +617,7 @@ export default function App() {
         </footer>
       )}
 
-      {/* NEW: Bottom-left feedback link (fixed) */}
+      {/* Bottom-left feedback link (fixed) */}
       <button
         className="feedback-link-fixed dim-on-focus"
         onClick={() => {}}
