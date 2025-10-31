@@ -21,6 +21,54 @@ const consumeWhile = (T: string, i: number, p: (c: string) => boolean) => {
 const isSpace = (c: string) => c === " " || c === "\t";
 const isNL = (c: string) => c === "\n";
 
+// Monkeytype-style minutes
+const minutesElapsed = (start: number, end: number) =>
+  Math.max((end - start) / 60000, 1e-6);
+
+// Count characters of fully correct words (with their following separator)
+function correctWordChars(target: string, input: string): number {
+  const t = target.split(/(\s+)/);
+  const i = input.split(/(\s+)/);
+  let chars = 0;
+  for (let k = 0; k < t.length && k < i.length; k += 2) {
+    const tWord = t[k] ?? "";
+    const tSep = t[k + 1] ?? "";
+    const iWord = i[k] ?? "";
+    const iSep = i[k + 1] ?? "";
+    const wordOk = iWord === tWord;
+    const sepOk = iSep === tSep || (!tSep && !iSep);
+    if (wordOk && sepOk) chars += tWord.length + tSep.length;
+    else break;
+  }
+  return chars;
+}
+
+// Hard-wrap text to a max line length while preserving indentation.
+function hardWrap(text: string, limit = 70): string {
+  const breakable = (s: string) => {
+    const w = s.slice(0, limit + 1);
+    const pts = [w.lastIndexOf(" "), w.lastIndexOf("\t"), w.lastIndexOf(","), w.lastIndexOf(";")].filter((x) => x > 0);
+    return pts.length ? Math.max(...pts) : -1;
+  };
+  const out: string[] = [];
+  for (const original of text.split("\n")) {
+    const indent = (original.match(/^(\s*)/)?.[1]) ?? "";
+    let line = original;
+    while (line.length > limit) {
+      const bp = breakable(line);
+      if (bp === -1) {
+        out.push(line.slice(0, limit));
+        line = indent + line.slice(limit).trimStart();
+      } else {
+        out.push(line.slice(0, bp).replace(/\s+$/, ""));
+        line = indent + line.slice(bp).trimStart();
+      }
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
 function computeLineStarts(text: string): number[] {
   const starts = [0];
   for (let i = 0; i < text.length; i++) if (text[i] === "\n") starts.push(i + 1);
@@ -28,12 +76,12 @@ function computeLineStarts(text: string): number[] {
 }
 
 // ---- layout constants for exact-fit math ----
-const PAD_T = 28;            // match CSS .stage padding-top
-const PAD_B = 36;            // match CSS .stage padding-bottom
-const LINES = 10;            // fixed visible lines
-const LINE_H = 1.9;          // match CSS .text line-height
-const MIN_FONT = 14;         // px
-const MAX_FONT = 32;         // px
+const PAD_T = 28;
+const PAD_B = 36;
+const LINES = 10;
+const LINE_H = 1.9;
+const MIN_FONT = 14;
+const MAX_FONT = 32;
 
 export default function App() {
   // ---- state ----
@@ -43,7 +91,9 @@ export default function App() {
   const [autoIndent, setAutoIndent] = useState<boolean>(true);
   const [repeatSame, setRepeatSame] = useState<boolean>(false);
 
-  const [target, setTarget] = useState<string>(generateSnippet(concept, blocks, lang));
+  const [target, setTarget] = useState<string>(
+    hardWrap(generateSnippet(concept, blocks, lang), 70)
+  );
   const [lastTarget, setLastTarget] = useState<string>(target);
 
   const [input, setInput] = useState<string>("");
@@ -53,27 +103,31 @@ export default function App() {
 
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
-  // panel height (outer)
+  // resizable panel height
   const [panelH, setPanelH] = useState<number>(320);
 
-  // DOM ref to measure wrapper position for accurate cap
+  // focus indicators & focus mode
+  const [hasFocus, setHasFocus] = useState<boolean>(true);
+  const [focusMode, setFocusMode] = useState<boolean>(false);
+  const [squelchHint, setSquelchHint] = useState<boolean>(false);
+
+  // DOM refs
   const stageWrapRef = useRef<HTMLDivElement>(null);
   const hiddenRef = useRef<HTMLTextAreaElement>(null);
 
   // derive font size so 10 lines fill inner height exactly
   const innerHeight = Math.max(0, panelH - PAD_T - PAD_B);
   const fontPxRaw = innerHeight / (LINES * LINE_H);
-  const fontPx = Math.min(MAX_FONT, Math.max(MIN_FONT, fontPxRaw)); // continuous scaling, clamped
+  const fontPx = Math.min(MAX_FONT, Math.max(MIN_FONT, fontPxRaw));
 
   // dynamic min height so 10 lines always fit at MIN_FONT
   const getPanelMin = () => PAD_T + PAD_B + LINES * LINE_H * MIN_FONT;
 
-  // keep ~1/5 of viewport free at bottom (≥120px), computed from actual on-screen top
+  // cap so ≥1/5 viewport bottom stays free
   const getPanelMax = () => {
     const vh = typeof window !== "undefined" ? window.innerHeight : 800;
     const reserve = Math.max(120, Math.round(vh / 5));
-    const top =
-      stageWrapRef.current ? Math.max(0, stageWrapRef.current.getBoundingClientRect().top) : 0;
+    const top = stageWrapRef.current ? Math.max(0, stageWrapRef.current.getBoundingClientRect().top) : 0;
     const cap = vh - reserve - top;
     return Math.max(getPanelMin(), Math.min(720, cap));
   };
@@ -88,27 +142,52 @@ export default function App() {
     typeof navigator !== "undefined" &&
     /Mac|iPhone|iPad/.test(navigator.platform || "");
 
-  // Focus once on mount
+  // Focus textarea on mount
   useEffect(() => {
     hiddenRef.current?.focus();
   }, []);
 
-  // Ensure initial height respects computed min
+  // Track DOM focus (for hint badge)
   useEffect(() => {
-    setPanelH((h) => Math.max(h, getPanelMin()));
+    const sync = () => setHasFocus(document.activeElement === hiddenRef.current);
+    document.addEventListener("focusin", sync);
+    document.addEventListener("focusout", sync);
+    window.addEventListener("blur", () => setHasFocus(false));
+    window.addEventListener("focus", sync);
+    return () => {
+      document.removeEventListener("focusin", sync);
+      document.removeEventListener("focusout", sync);
+      window.removeEventListener("blur", () => setHasFocus(false));
+      window.removeEventListener("focus", sync);
+    };
   }, []);
 
-  // Scoped focus so dropdowns/settings/handle stay usable
+  // Exit focus mode on any pointer activity
+  useEffect(() => {
+    const exit = () => setFocusMode(false);
+    window.addEventListener("mousemove", exit);
+    window.addEventListener("mousedown", exit);
+    window.addEventListener("touchstart", exit, { passive: true } as any);
+    return () => {
+      window.removeEventListener("mousemove", exit);
+      window.removeEventListener("mousedown", exit);
+      window.removeEventListener("touchstart", exit as any);
+    };
+  }, []);
+
+  // Scoped auto-focus when clicking empty areas
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       const el = e.target as HTMLElement;
       if (
-        el.closest(".toolbar") ||
+        el.closest(".topbar-mk") ||
+        el.closest(".mk-profile") ||            // NEW: profile button
         el.closest(".settings-card") ||
         el.closest(".settings-link-fixed") ||
-        el.closest(".resize-handle")
-      )
-        return;
+        el.closest(".feedback-link-fixed") ||   // NEW: feedback link
+        el.closest(".resize-handle") ||
+        el.closest(".center-actions")
+      ) return;
       const tag = el.tagName.toLowerCase();
       if (["select", "button", "input", "textarea"].includes(tag) || el.isContentEditable) return;
       hiddenRef.current?.focus();
@@ -117,17 +196,33 @@ export default function App() {
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
-  // Keep cap in sync with viewport changes
+  // Enforce initial min height
   useEffect(() => {
-    function onResize() {
+    setPanelH((h) => Math.max(h, getPanelMin()));
+  }, []);
+
+  // Keep height within caps on resize
+  useEffect(() => {
+    const onResize = () => {
       setPanelH((h) => {
         const min = getPanelMin();
         const max = getPanelMax();
         return Math.min(max, Math.max(min, h));
       });
-    }
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Release squelch when mouse/touch ends
+  useEffect(() => {
+    const release = () => setSquelchHint(false);
+    window.addEventListener("mouseup", release);
+    window.addEventListener("touchend", release);
+    return () => {
+      window.removeEventListener("mouseup", release);
+      window.removeEventListener("touchend", release);
+    };
   }, []);
 
   // Drag handlers
@@ -144,7 +239,7 @@ export default function App() {
       const min = getPanelMin();
       const max = getPanelMax();
       const next = Math.min(max, Math.max(min, dragRef.current.startH + dy));
-      setPanelH(next); // fontPx recomputes continuously from panelH, no rounding
+      setPanelH(next);
     }
     function onUp() {
       if (!dragRef.current.dragging) return;
@@ -159,19 +254,31 @@ export default function App() {
     };
   }, []);
 
-  // Stats
-  const { accuracy, wpm } = useMemo(() => {
-    let ok = 0;
-    for (let i = 0; i < input.length; i++) if (input[i] === target[i]) ok++;
-    const elapsedMin = Math.max(
-      ((endedAt ?? Date.now()) - (startedAt ?? Date.now())) / 60000,
-      1 / 60000
-    );
-    const grossWpm = Math.max(Math.round(ok / 5 / elapsedMin), 0);
-    const acc = input.length
-      ? Math.max(0, Math.round((ok / input.length) * 100))
-      : 100;
-    return { accuracy: acc, wpm: grossWpm };
+  // ---- Stats (Monkeytype) ----
+  const { accuracy, wpm, rawWpm } = useMemo(() => {
+    // accuracy: correct keystrokes / total keystrokes
+    let correctKeys = 0;
+    for (let k = 0; k < input.length && k < target.length; k++) {
+      if (input[k] === target[k]) correctKeys++;
+    }
+    const acc = input.length ? Math.round((correctKeys / input.length) * 100) : 100;
+
+    const end = endedAt ?? Date.now();
+    let mins = startedAt ? minutesElapsed(startedAt, end) : 0;
+
+    // Warm-up floor while running to avoid first-keystroke spikes
+    if (!endedAt) {
+      const FLOOR = 2 / 60; // 2 seconds
+      if (mins < FLOOR) mins = FLOOR;
+    } else {
+      mins = Math.max(mins, 1e-6);
+    }
+
+    const correctCharsInCorrectWords = correctWordChars(target, input);
+    const mtWpm = Math.round((correctCharsInCorrectWords / 5) / mins); // Monkeytype WPM
+    const mtRaw = Math.round((input.length / 5) / mins);               // Raw WPM
+
+    return { accuracy: acc, wpm: mtWpm, rawWpm: mtRaw };
   }, [input, target, startedAt, endedAt]);
 
   // Start/finish transitions
@@ -179,10 +286,12 @@ export default function App() {
     if (state === "idle" && input.length > 0) {
       setState("running");
       setStartedAt(Date.now());
+      setFocusMode(true);
     }
     if (state !== "done" && input.length === target.length) {
       setState("done");
       setEndedAt(Date.now());
+      setFocusMode(false); // ensure no blur after finish
     }
   }, [input, target.length, state]);
 
@@ -194,10 +303,10 @@ export default function App() {
 
     let next = target;
     if (!repeatSame || target.length === 0) {
-      next = generateSnippet(c, b, L);
+      next = hardWrap(generateSnippet(c, b, L), 70);
       setLastTarget(next);
     } else {
-      next = lastTarget;
+      next = hardWrap(lastTarget, 70);
     }
 
     setTarget(next);
@@ -205,26 +314,21 @@ export default function App() {
     setState("idle");
     setStartedAt(null);
     setEndedAt(null);
+    setFocusMode(false); // reset; typing will enable it again
     hiddenRef.current?.focus();
   }
 
   function switchConcept(c: Concept) {
     setConcept(c);
-    if (repeatSame && lastTarget) {
-      setTarget(lastTarget);
-      setInput("");
-      setState("idle");
-      setStartedAt(null);
-      setEndedAt(null);
-    } else {
-      const fresh = generateSnippet(c, blocks, lang);
-      setTarget(fresh);
-      setLastTarget(fresh);
-      setInput("");
-      setState("idle");
-      setStartedAt(null);
-      setEndedAt(null);
-    }
+    const fresh = repeatSame && lastTarget ? hardWrap(lastTarget, 70)
+      : hardWrap(generateSnippet(c, blocks, lang), 70);
+    setTarget(fresh);
+    if (!repeatSame) setLastTarget(fresh);
+    setInput("");
+    setState("idle");
+    setStartedAt(null);
+    setEndedAt(null);
+    setFocusMode(false);
   }
 
   function switchLang(L: Lang) {
@@ -232,27 +336,33 @@ export default function App() {
     const supported = SUPPORTED[L];
     const nextConcept = supported.includes(concept) ? concept : supported[0];
     setConcept(nextConcept);
-    const fresh = repeatSame ? lastTarget : generateSnippet(nextConcept, blocks, L);
+    const fresh = repeatSame ? hardWrap(lastTarget, 70)
+      : hardWrap(generateSnippet(nextConcept, blocks, L), 70);
     setTarget(fresh);
     if (!repeatSame) setLastTarget(fresh);
     setInput("");
     setState("idle");
     setStartedAt(null);
     setEndedAt(null);
+    setFocusMode(false);
   }
 
-  // Typing handlers (no space-skipping while typing; Enter mirrors target)
+  // Typing handlers — enter focus mode only while NOT done
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     if (state === "done") return;
     const raw = e.target.value;
     const nextClamped = raw.length <= target.length ? raw : raw.slice(0, target.length);
     setInput(nextClamped);
+    setFocusMode(true);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (state !== "done") setFocusMode(true);
+
     // ⌘/Ctrl + Enter → restart
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
+      setSquelchHint(true);
       restart();
       return;
     }
@@ -271,7 +381,7 @@ export default function App() {
       return;
     }
 
-    // Enter → newline(s) + EXACT target indent (no synthesis)
+    // Enter → newline(s) + EXACT target indent
     if (e.key === "Enter") {
       e.preventDefault();
       setInput((prev) => {
@@ -284,7 +394,7 @@ export default function App() {
         if (autoIndent) {
           const after = prev.length + add.length;
           if (after < target.length) {
-            add += consumeWhile(target, after, isSpace); // may be empty
+            add += consumeWhile(target, after, isSpace);
           }
         }
         return (prev + add).slice(0, target.length);
@@ -339,45 +449,66 @@ export default function App() {
 
   // ---- UI ----
   return (
-    <div className="wrap">
-      {/* Toolbar */}
-      <div className="toolbar">
-        <label className="mode">
-          <span className="mode-label">Lang</span>
-          <select
-            className="mode-select"
-            value={lang}
-            onChange={(e) => switchLang(e.target.value as Lang)}
-          >
-            {LANGS.map((L) => (
-              <option key={L.id} value={L.id}>
-                {L.label}
-              </option>
-            ))}
-          </select>
-        </label>
+    <div className={`wrap ${focusMode ? "focus-mode" : ""}`}>
+      {/* Top bar */}
+      <div className="topbar-mk dim-on-focus">
+        <div className="mk-group">
+          <span className="mk-icon">@</span>
+          <span className="mk-label">lang</span>
+          <span className="mk-selectwrap">
+            <select
+              className="mk-select"
+              value={lang}
+              onChange={(e) => switchLang(e.target.value as Lang)}
+            >
+              {LANGS.map((L) => (
+                <option key={L.id} value={L.id}>
+                  {L.label}
+                </option>
+              ))}
+            </select>
+          </span>
+        </div>
 
-        <label className="mode">
-          <span className="mode-label">Mode</span>
-          <select
-            className="mode-select"
-            value={concept}
-            onChange={(e) => switchConcept(e.target.value as Concept)}
-          >
-            {CONCEPTS.filter((c) => availableConcepts.includes(c.id)).map(({ id, label }) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="mk-divider" />
 
-        <div className="spacer" />
+        <div className="mk-group">
+          <span className="mk-icon">A</span>
+          <span className="mk-label">mode</span>
+          <span className="mk-selectwrap">
+            <select
+              className="mk-select"
+              value={concept}
+              onChange={(e) => switchConcept(e.target.value as Concept)}
+            >
+              {CONCEPTS.filter((c) => availableConcepts.includes(c.id)).map(({ id, label }) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </span>
+        </div>
 
-        {/* Restart only */}
-        <button className="btn" onClick={() => restart()}>
-          Restart
-        </button>
+        <div className="mk-spacer" />
+
+        <div className="mk-stats">
+          {state === "done" ? (
+            <>
+              <div className="mk-pill"><strong>WPM</strong>{wpm}</div>
+              <div className="mk-pill"><strong>RAW</strong>{rawWpm}</div>
+              <div className="mk-pill"><strong>ACC</strong>{accuracy}%</div>
+            </>
+          ) : null}
+          <div className="mk-pill"><strong>PROG</strong>{progress}%</div>
+        </div>
+
+        {/* NEW: Profile button at far right */}
+        <div className="mk-profile dim-on-focus" aria-label="Profile" title="Profile">
+          <button className="profile-btn" type="button">
+            <span className="avatar-circle">DC</span>
+          </button>
+        </div>
       </div>
 
       {/* Hidden textarea */}
@@ -386,6 +517,8 @@ export default function App() {
         value={input}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        onFocus={() => setHasFocus(true)}
+        onBlur={() => setHasFocus(false)}
         className="ghost-input"
         rows={1}
         readOnly={state === "done"}
@@ -395,23 +528,10 @@ export default function App() {
         autoFocus
       />
 
-      {/* Stats */}
-      <header className="topbar">
-        <div className="stat">
-          <strong>WPM</strong> {wpm}
-        </div>
-        <div className="stat">
-          <strong>ACC</strong> {accuracy}%
-        </div>
-        <div className="stat">
-          <strong>PROG</strong> {progress}%
-        </div>
-      </header>
-
       {/* Stage (resizable) */}
       <div
         ref={stageWrapRef}
-        className="stage-wrap"
+        className={`stage-wrap ${hasFocus ? "" : "unfocused"}`}
         style={{ height: panelH }}
         onClick={() => hiddenRef.current?.focus()}
       >
@@ -442,7 +562,7 @@ export default function App() {
           )}
         </main>
 
-        {/* ultra-minimal drag handle */}
+        {/* drag handle */}
         <div
           className="resize-handle"
           onMouseDown={onDragStart}
@@ -451,24 +571,53 @@ export default function App() {
           aria-orientation="vertical"
           tabIndex={-1}
         />
+
+        {/* focus hint */}
+        {!hasFocus && !squelchHint && (
+          <div className="focus-indicator" aria-hidden>
+            Click to focus
+          </div>
+        )}
       </div>
 
       {/* Centered hint */}
-      <div className="center-hint">
-        {isMac ? "⌘" : "Ctrl"} + Return to restart
+      <div className="center-hint">{isMac ? "⌘" : "Ctrl"} + Return to restart</div>
+
+      {/* Restart icon under hint */}
+      <div className="center-actions">
+        <button
+          className="btn-icon"
+          onMouseDown={() => setSquelchHint(true)}
+          onTouchStart={() => setSquelchHint(true)}
+          onClick={() => restart()}
+          aria-label="Restart test"
+          title="Restart (⌘/Ctrl + Return)"
+        >
+          ↻
+        </button>
       </div>
 
       {state === "done" && (
-        <footer className="results">
+        <footer className="results dim-on-focus">
           <div>
-            Finished — <strong>{wpm} WPM</strong>, <strong>{accuracy}%</strong> accuracy.
+            Finished — <strong>{wpm} WPM</strong> (<strong>raw {rawWpm}</strong>),{" "}
+            <strong>{accuracy}%</strong> accuracy.
           </div>
         </footer>
       )}
 
-      {/* Subtle Settings link (fixed bottom-right) */}
+      {/* NEW: Bottom-left feedback link (fixed) */}
       <button
-        className="settings-link-fixed"
+        className="feedback-link-fixed dim-on-focus"
+        onClick={() => {}}
+        aria-label="Send feedback"
+      >
+        Send feedback
+      </button>
+
+      {/* Settings (fixed BR) */}
+      <button
+        className="settings-link-fixed dim-on-focus"
         onClick={() => setShowSettings((s) => !s)}
         aria-label="Open settings"
       >
@@ -476,7 +625,7 @@ export default function App() {
       </button>
 
       {showSettings && (
-        <div className="settings-card">
+        <div className="settings-card dim-on-focus">
           <div className="settings-row">
             <label className="settings-label">Blocks</label>
             <input
