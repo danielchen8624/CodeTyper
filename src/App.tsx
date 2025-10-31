@@ -21,38 +21,54 @@ const consumeWhile = (T: string, i: number, p: (c: string) => boolean) => {
 const isSpace = (c: string) => c === " " || c === "\t";
 const isNL = (c: string) => c === "\n";
 
-// Monkeytype-style minutes
+// Minutes helper
 const minutesElapsed = (start: number, end: number) =>
   Math.max((end - start) / 60000, 1e-6);
 
-// Count characters of fully correct words (with their following separator)
+
 function correctWordChars(target: string, input: string): number {
-  const t = target.split(/(\s+)/);
-  const i = input.split(/(\s+)/);
+  const T = target.replace(/^\s+/, "");
+  const I = input.replace(/^\s+/, "");
+
+  const t = T.split(/(\s+)/);
+  const i = I.split(/(\s+)/);
+
   let chars = 0;
+
   for (let k = 0; k < t.length && k < i.length; k += 2) {
     const tWord = t[k] ?? "";
     const tSep = t[k + 1] ?? "";
     const iWord = i[k] ?? "";
     const iSep = i[k + 1] ?? "";
+
     const wordOk = iWord === tWord;
     const sepOk = iSep === tSep || (!tSep && !iSep);
-    if (wordOk && sepOk) chars += tWord.length + tSep.length;
-    else break;
+
+    if (wordOk && sepOk) {
+      chars += tWord.length + tSep.length;
+    } else {
+      break;
+    }
   }
+
   return chars;
 }
 
-// Hard-wrap text to a max line length while preserving indentation.
+// Hard-wrap text to a max line length while preserving indentation (no mid-token splits when possible)
 function hardWrap(text: string, limit = 70): string {
   const breakable = (s: string) => {
     const w = s.slice(0, limit + 1);
-    const pts = [w.lastIndexOf(" "), w.lastIndexOf("\t"), w.lastIndexOf(","), w.lastIndexOf(";")].filter((x) => x > 0);
+    const pts = [
+      w.lastIndexOf(" "),
+      w.lastIndexOf("\t"),
+      w.lastIndexOf(","),
+      w.lastIndexOf(";"),
+    ].filter((x) => x > 0);
     return pts.length ? Math.max(...pts) : -1;
   };
   const out: string[] = [];
   for (const original of text.split("\n")) {
-    const indent = (original.match(/^(\s*)/)?.[1]) ?? "";
+    const indent = original.match(/^(\s*)/)?.[1] ?? "";
     let line = original;
     while (line.length > limit) {
       const bp = breakable(line);
@@ -71,7 +87,8 @@ function hardWrap(text: string, limit = 70): string {
 
 function computeLineStarts(text: string): number[] {
   const starts = [0];
-  for (let i = 0; i < text.length; i++) if (text[i] === "\n") starts.push(i + 1);
+  for (let i = 0; i < text.length; i++)
+    if (text[i] === "\n") starts.push(i + 1);
   return starts;
 }
 
@@ -83,10 +100,7 @@ const LINE_H = 1.9;
 const MIN_FONT = 14;
 const MAX_FONT = 32;
 
-export default function App() {
-  // ---- auth stub ----
-  const [isSignedIn] = useState<boolean>(false); // modify when you wire auth
-
+export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
   // ---- state ----
   const [lang, setLang] = useState<Lang>("python");
   const [concept, setConcept] = useState<Concept>("loops");
@@ -130,16 +144,20 @@ export default function App() {
   const getPanelMax = () => {
     const vh = typeof window !== "undefined" ? window.innerHeight : 800;
     const reserve = Math.max(120, Math.round(vh / 5));
-    const top = stageWrapRef.current ? Math.max(0, stageWrapRef.current.getBoundingClientRect().top) : 0;
+    const top = stageWrapRef.current
+      ? Math.max(0, stageWrapRef.current.getBoundingClientRect().top)
+      : 0;
     const cap = vh - reserve - top;
     return Math.max(getPanelMin(), Math.min(720, cap));
   };
 
-  const dragRef = useRef<{ dragging: boolean; startY: number; startH: number }>({
-    dragging: false,
-    startY: 0,
-    startH: 320,
-  });
+  const dragRef = useRef<{ dragging: boolean; startY: number; startH: number }>(
+    {
+      dragging: false,
+      startY: 0,
+      startH: 320,
+    }
+  );
 
   const isMac =
     typeof navigator !== "undefined" &&
@@ -152,7 +170,8 @@ export default function App() {
 
   // Track DOM focus (for hint badge)
   useEffect(() => {
-    const sync = () => setHasFocus(document.activeElement === hiddenRef.current);
+    const sync = () =>
+      setHasFocus(document.activeElement === hiddenRef.current);
     document.addEventListener("focusin", sync);
     document.addEventListener("focusout", sync);
     window.addEventListener("blur", () => setHasFocus(false));
@@ -178,7 +197,7 @@ export default function App() {
     };
   }, []);
 
-  // Scoped auto-focus when clicking empty areas
+  // Scoped auto-focus when clicking empty areas (but ignore controls + brand bar)
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       const el = e.target as HTMLElement;
@@ -189,10 +208,16 @@ export default function App() {
         el.closest(".settings-link-fixed") ||
         el.closest(".feedback-link-fixed") ||
         el.closest(".resize-handle") ||
-        el.closest(".center-actions")
-      ) return;
+        el.closest(".center-actions") ||
+        el.closest(".brand-bar")
+      )
+        return;
       const tag = el.tagName.toLowerCase();
-      if (["select", "button", "input", "textarea"].includes(tag) || el.isContentEditable) return;
+      if (
+        ["select", "button", "input", "textarea"].includes(tag) ||
+        el.isContentEditable
+      )
+        return;
       hiddenRef.current?.focus();
     };
     document.addEventListener("mousedown", onMouseDown);
@@ -264,7 +289,9 @@ export default function App() {
     for (let k = 0; k < input.length && k < target.length; k++) {
       if (input[k] === target[k]) correctKeys++;
     }
-    const acc = input.length ? Math.round((correctKeys / input.length) * 100) : 100;
+    const acc = input.length
+      ? Math.round((correctKeys / input.length) * 100)
+      : 100;
 
     const end = endedAt ?? Date.now();
     let mins = startedAt ? minutesElapsed(startedAt, end) : 0;
@@ -278,8 +305,8 @@ export default function App() {
     }
 
     const correctCharsInCorrectWords = correctWordChars(target, input);
-    const mtWpm = Math.round((correctCharsInCorrectWords / 5) / mins); // Monkeytype WPM
-    const mtRaw = Math.round((input.length / 5) / mins);               // Raw WPM
+    const mtWpm = Math.round(correctCharsInCorrectWords / 5 / mins); // Monkeytype WPM
+    const mtRaw = Math.round(input.length / 5 / mins); // Raw WPM
 
     return { accuracy: acc, wpm: mtWpm, rawWpm: mtRaw };
   }, [input, target, startedAt, endedAt]);
@@ -299,7 +326,11 @@ export default function App() {
   }, [input, target.length, state]);
 
   // ---- controls ----
-  function restart(nextBlocks?: number, nextConcept?: Concept, nextLang?: Lang) {
+  function restart(
+    nextBlocks?: number,
+    nextConcept?: Concept,
+    nextLang?: Lang
+  ) {
     const c = nextConcept ?? concept;
     const L = nextLang ?? lang;
     const b = nextBlocks ?? blocks;
@@ -323,8 +354,10 @@ export default function App() {
 
   function switchConcept(c: Concept) {
     setConcept(c);
-    const fresh = repeatSame && lastTarget ? hardWrap(lastTarget, 70)
-      : hardWrap(generateSnippet(c, blocks, lang), 70);
+    const fresh =
+      repeatSame && lastTarget
+        ? hardWrap(lastTarget, 70)
+        : hardWrap(generateSnippet(c, blocks, lang), 70);
     setTarget(fresh);
     if (!repeatSame) setLastTarget(fresh);
     setInput("");
@@ -339,7 +372,8 @@ export default function App() {
     const supported = SUPPORTED[L];
     const nextConcept = supported.includes(concept) ? concept : supported[0];
     setConcept(nextConcept);
-    const fresh = repeatSame ? hardWrap(lastTarget, 70)
+    const fresh = repeatSame
+      ? hardWrap(lastTarget, 70)
       : hardWrap(generateSnippet(nextConcept, blocks, L), 70);
     setTarget(fresh);
     if (!repeatSame) setLastTarget(fresh);
@@ -350,13 +384,14 @@ export default function App() {
     setFocusMode(false);
   }
 
-  // Typing handlers — enter focus mode only while NOT done
+  // Typing handlers — enter focus mode only while NOT done (avoid TS "no overlap" by ordering checks)
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setFocusMode(true);
     if (state === "done") return;
     const raw = e.target.value;
-    const nextClamped = raw.length <= target.length ? raw : raw.slice(0, target.length);
+    const nextClamped =
+      raw.length <= target.length ? raw : raw.slice(0, target.length);
     setInput(nextClamped);
-    setFocusMode(true);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -383,27 +418,46 @@ export default function App() {
       }
       return;
     }
+    // Enter → insert the exact run of target newlines, then indent of the first non-empty line after them
+if (e.key === "Enter") {
+  e.preventDefault();
+  setInput((prev) => {
+    const caret = prev.length;
 
-    // Enter → newline(s) + EXACT target indent
-    if (e.key === "Enter") {
-      e.preventDefault();
-      setInput((prev) => {
-        const caret = prev.length;
-        let add =
-          caret < target.length && isNL(target[caret])
-            ? consumeWhile(target, caret, isNL)
-            : "\n";
-
-        if (autoIndent) {
-          const after = prev.length + add.length;
-          if (after < target.length) {
-            add += consumeWhile(target, after, isSpace);
-          }
-        }
-        return (prev + add).slice(0, target.length);
-      });
-      return;
+    // 1) Add the exact newline run from target (preserves block jumps)
+    let add = "\n";
+    if (caret < target.length && isNL(target[caret])) {
+      add = consumeWhile(target, caret, isNL); // may be "\n\n" etc.
     }
+
+    // 2) Append indentation from the first non-empty line after that run
+    if (autoIndent) {
+      let scan = caret + add.length;
+      let indent = "";
+
+      while (scan < target.length) {
+        const start = scan;
+        while (scan < target.length && isSpace(target[scan])) scan++;
+
+        // if this line has code, capture its leading spaces/tabs
+        if (scan < target.length && target[scan] !== "\n") {
+          indent = target.slice(start, scan);
+          break;
+        }
+
+        // empty line → skip to the next line
+        const nl = target.indexOf("\n", scan);
+        if (nl === -1) break;
+        scan = nl + 1;
+      }
+      add += indent;
+    }
+
+    return (prev + add).slice(0, target.length);
+  });
+  return;
+}
+
   }
 
   // ------ fixed 10-line window ------
@@ -418,7 +472,10 @@ export default function App() {
   }, [input, totalLines]);
 
   const maxStart = Math.max(0, totalLines - WINDOW);
-  const startLine = Math.min(currentLine < BEFORE ? 0 : currentLine - BEFORE, maxStart);
+  const startLine = Math.min(
+    currentLine < BEFORE ? 0 : currentLine - BEFORE,
+    maxStart
+  );
   const endLine = Math.min(totalLines, startLine + WINDOW);
 
   const startChar = lineStarts[startLine] ?? 0;
@@ -428,7 +485,8 @@ export default function App() {
     const arr: { ch: string; status: "pending" | "correct" | "wrong" }[] = [];
     for (let gi = startChar; gi < endChar; gi++) {
       let status: "pending" | "correct" | "wrong" = "pending";
-      if (gi < input.length) status = input[gi] === target[gi] ? "correct" : "wrong";
+      if (gi < input.length)
+        status = input[gi] === target[gi] ? "correct" : "wrong";
       arr.push({ ch: target[gi], status });
     }
     return arr;
@@ -439,13 +497,17 @@ export default function App() {
     const arr: { ch: string; status: "pending" | "correct" | "wrong" }[] = [];
     for (let gi = 0; gi < target.length; gi++) {
       let status: "pending" | "correct" | "wrong" = "pending";
-      if (gi < input.length) status = input[gi] === target[gi] ? "correct" : "wrong";
+      if (gi < input.length)
+        status = input[gi] === target[gi] ? "correct" : "wrong";
       arr.push({ ch: target[gi], status });
     }
     return arr;
   }, [state, target, input]);
 
-  const caretInSlice = Math.max(0, Math.min(input.length - startChar, endChar - startChar));
+  const caretInSlice = Math.max(
+    0,
+    Math.min(input.length - startChar, endChar - startChar)
+  );
   const progress = Math.round((input.length / target.length) * 100);
 
   const availableConcepts = SUPPORTED[lang];
@@ -484,11 +546,13 @@ export default function App() {
               value={concept}
               onChange={(e) => switchConcept(e.target.value as Concept)}
             >
-              {CONCEPTS.filter((c) => availableConcepts.includes(c.id)).map(({ id, label }) => (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              ))}
+              {CONCEPTS.filter((c) => availableConcepts.includes(c.id)).map(
+                ({ id, label }) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                )
+              )}
             </select>
           </span>
         </div>
@@ -498,26 +562,42 @@ export default function App() {
         <div className="mk-stats">
           {state === "done" ? (
             <>
-              <div className="mk-pill"><strong>WPM</strong>{wpm}</div>
-              <div className="mk-pill"><strong>RAW</strong>{rawWpm}</div>
-              <div className="mk-pill"><strong>ACC</strong>{accuracy}%</div>
+              <div className="mk-pill">
+                <strong>WPM</strong>
+                {wpm}
+              </div>
+              <div className="mk-pill">
+                <strong>RAW</strong>
+                {rawWpm}
+              </div>
+              <div className="mk-pill">
+                <strong>ACC</strong>
+                {accuracy}%
+              </div>
             </>
           ) : null}
-          <div className="mk-pill"><strong>PROG</strong>{progress}%</div>
+          <div className="mk-pill">
+            <strong>PROG</strong>
+            {progress}%
+          </div>
         </div>
 
-        {/* Profile button (routes to login if not signed in) */}
-        <div className="mk-profile dim-on-focus" aria-label="Profile" title="Profile">
+        {/* Profile button */}
+        <div
+          className="mk-profile dim-on-focus"
+          aria-label="Profile"
+          title="Profile"
+        >
           <button
             className="profile-btn"
             type="button"
             onClick={() => {
-              if (!isSignedIn) window.location.hash = "#/login";
+              window.location.hash = isSignedIn ? "#/profile" : "#/login";
             }}
             aria-label="Profile"
             title="Profile"
           >
-            <span className="avatar-circle">DC</span>
+            <span className="avatar-circle"></span>
           </button>
         </div>
       </div>
@@ -552,7 +632,13 @@ export default function App() {
               {visibleChars.map((c, i) => (
                 <span
                   key={i}
-                  className={c.status === "correct" ? "char ok" : c.status === "wrong" ? "char bad" : "char"}
+                  className={
+                    c.status === "correct"
+                      ? "char ok"
+                      : c.status === "wrong"
+                      ? "char bad"
+                      : "char"
+                  }
                 >
                   {c.ch === " " ? "\u00A0" : c.ch}
                   {i === caretInSlice ? <span className="caret" /> : null}
@@ -560,11 +646,20 @@ export default function App() {
               ))}
             </div>
           ) : (
-            <div className="text text-scroll" style={{ fontSize: `${fontPx}px` }}>
+            <div
+              className="text text-scroll"
+              style={{ fontSize: `${fontPx}px` }}
+            >
               {fullChars!.map((c, i) => (
                 <span
                   key={i}
-                  className={c.status === "correct" ? "char ok" : c.status === "wrong" ? "char bad" : "char"}
+                  className={
+                    c.status === "correct"
+                      ? "char ok"
+                      : c.status === "wrong"
+                      ? "char bad"
+                      : "char"
+                  }
                 >
                   {c.ch === " " ? "\u00A0" : c.ch}
                 </span>
@@ -592,7 +687,9 @@ export default function App() {
       </div>
 
       {/* Centered hint */}
-      <div className="center-hint">{isMac ? "⌘" : "Ctrl"} + Return to restart</div>
+      <div className="center-hint">
+        {isMac ? "⌘" : "Ctrl"} + Return to restart
+      </div>
 
       {/* Restart icon under hint */}
       <div className="center-actions">
@@ -611,8 +708,8 @@ export default function App() {
       {state === "done" && (
         <footer className="results dim-on-focus">
           <div>
-            Finished — <strong>{wpm} WPM</strong> (<strong>raw {rawWpm}</strong>),{" "}
-            <strong>{accuracy}%</strong> accuracy.
+            Finished — <strong>{wpm} WPM</strong> (<strong>raw {rawWpm}</strong>
+            ), <strong>{accuracy}%</strong> accuracy.
           </div>
         </footer>
       )}
@@ -646,7 +743,10 @@ export default function App() {
               max={10}
               value={blocks}
               onChange={(e) => {
-                const v = Math.max(1, Math.min(10, Number(e.target.value) || 1));
+                const v = Math.max(
+                  1,
+                  Math.min(10, Number(e.target.value) || 1)
+                );
                 setBlocks(v);
               }}
             />
