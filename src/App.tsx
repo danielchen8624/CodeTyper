@@ -298,7 +298,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     let mins = startedAt ? minutesElapsed(startedAt, end) : 0;
 
     // Warm-up floor while running to avoid first-keystroke spikes
-       if (!endedAt) {
+    if (!endedAt) {
       const FLOOR = 2 / 60; // 2 seconds
       if (mins < FLOOR) mins = FLOOR;
     } else {
@@ -328,40 +328,72 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
 
   // Save score to leaderboard once per finished run
   useEffect(() => {
-    if (
-      state !== "done" ||
-      !isSignedIn ||
-      !startedAt ||
-      !endedAt ||
-      hasSavedRef.current
-    ) {
-      return;
-    }
+    if (state !== "done") return;
+
+    console.log("Save effect hit", {
+      isSignedIn,
+      startedAt,
+      endedAt,
+      alreadySaved: hasSavedRef.current,
+    });
+
+    if (!isSignedIn || !startedAt || !endedAt || hasSavedRef.current) return;
 
     hasSavedRef.current = true;
 
     const saveScore = async () => {
       const {
-        data: { user },
+        data,
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError || !user) {
-        console.warn("No logged-in user, skipping score save");
+      if (userError || !data.user) {
+        console.error("No logged-in user, skipping score save", userError);
+        return;
+      }
+
+      const user = data.user;
+
+      // Make sure there is a matching row in public.users for FK
+      const usernameFromMeta =
+        (user.user_metadata as any)?.username ??
+        user.email?.split("@")[0] ??
+        "anon";
+
+      const { error: upsertErr } = await supabase
+        .from("users")
+        .upsert(
+          {
+            id: user.id,
+            email: user.email,
+            username: usernameFromMeta,
+          },
+          { onConflict: "id" }
+        );
+
+      if (upsertErr) {
+        console.error("Error upserting into users:", upsertErr);
         return;
       }
 
       const mins = minutesElapsed(startedAt, endedAt);
-      const codePerMinute = Math.round(input.length / Math.max(mins, 1e-6));
+      const codePerMinute = Math.round(
+        input.length / Math.max(mins, 1e-6)
+      );
 
-      const { error } = await supabase.from("leaderboard").insert({
+      const { error: lbErr } = await supabase.from("leaderboard").insert({
         user_id: user.id,
         language: lang,
         code_per_minute: codePerMinute,
       });
 
-      if (error) {
-        console.error("Error saving score:", error);
+      if (lbErr) {
+        console.error("Error saving score:", lbErr);
+      } else {
+        console.log("Saved score to leaderboard:", {
+          language: lang,
+          codePerMinute,
+        });
       }
     };
 
@@ -630,7 +662,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
           className="mk-pill"
           type="button"
           onClick={() => {
-            window.location.hash = "#/leaderboardPage";
+            window.location.hash = "#/leaderboardPage"; // <- match main.tsx route
           }}
           aria-label="View leaderboard"
         >
@@ -832,3 +864,5 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     </div>
   );
 }
+  
+
