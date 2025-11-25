@@ -1,43 +1,72 @@
 import { useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 
-export default function Login() {
+type Mode = "login" | "signup";
+
+export default function AuthPage() {
+  const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+  const [username, setUsername] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function onLogin(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password: pass,
-    });
-    setLoading(false);
-    if (error) setMsg(error.message);
-    else window.location.hash = ""; // back to app
+
+    try {
+      if (mode === "login") {
+        // LOGIN
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password: pass,
+        });
+        if (error) throw error;
+        window.location.hash = ""; // back to main
+      } else {
+        // SIGNUP
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password: pass,
+        });
+        if (error) throw error;
+
+        const user = data.user;
+        if (!user) throw new Error("No user returned from sign up.");
+
+        // 🔥 INSERT INTO public.users, not profiles
+        const { error: userError } = await supabase.from("users").insert({
+          id: user.id,
+          email: user.email,
+          username,
+        });
+
+        if (userError) throw userError;
+
+        setMsg("Check your email to confirm your account.");
+      }
+    } catch (err: any) {
+      setMsg(err.message ?? "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function onReset() {
-    setMsg(null);
-    if (!email) {
-      setMsg("Enter your email first, then click reset.");
-      return;
-    }
-    // Sends an email link that creates a temporary session and redirects to /#/reset
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/#/reset`,
-    });
-    if (error) setMsg(error.message);
-    else setMsg("Password reset email sent. Check your inbox.");
-  }
+  const isSignup = mode === "signup";
 
   return (
     <div className="wrap" style={{ maxWidth: 420 }}>
-      <h2 style={{ margin: "8px 0 16px" }}>Sign in</h2>
-      <form onSubmit={onLogin} className="settings-card" style={{ position: "static" }}>
+      <h2 style={{ margin: "8px 0 16px" }}>
+        {isSignup ? "Sign up" : "Log in"}
+      </h2>
+
+      <form
+        onSubmit={onSubmit}
+        className="settings-card"
+        style={{ position: "static" }}
+      >
         <div className="settings-row">
           <label className="settings-label">Email</label>
           <input
@@ -45,13 +74,23 @@ export default function Login() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
             required
             style={{ flex: 1 }}
           />
         </div>
+
+        {isSignup && (
+          <div className="settings-row">
+            <label className="settings-label">Username</label>
+            <input
+              className="settings-input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              style={{ flex: 1 }}
+            />
+          </div>
+        )}
 
         <div className="settings-row">
           <label className="settings-label">Password</label>
@@ -73,10 +112,24 @@ export default function Login() {
 
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
           <button className="mini" type="submit" disabled={loading}>
-            {loading ? "Signing in…" : "Sign in"}
+            {loading
+              ? isSignup
+                ? "Signing up…"
+                : "Logging in…"
+              : isSignup
+              ? "Sign up"
+              : "Log in"}
           </button>
-          <button className="mini" type="button" onClick={onReset} title="Email a reset link">
-            Forgot password?
+
+          <button
+            className="mini"
+            type="button"
+            onClick={() => {
+              setMode((m) => (m === "login" ? "signup" : "login"));
+              setMsg(null);
+            }}
+          >
+            {isSignup ? "Have an account? Log in" : "New here? Sign up"}
           </button>
         </div>
       </form>

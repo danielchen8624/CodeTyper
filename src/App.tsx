@@ -9,6 +9,7 @@ import {
   type Lang,
 } from "./lib/generators";
 import "./styles.css";
+import { supabase } from "./lib/supabaseClient";
 
 type TestState = "idle" | "running" | "done";
 
@@ -24,7 +25,6 @@ const isNL = (c: string) => c === "\n";
 // Minutes helper
 const minutesElapsed = (start: number, end: number) =>
   Math.max((end - start) / 60000, 1e-6);
-
 
 function correctWordChars(target: string, input: string): number {
   const T = target.replace(/^\s+/, "");
@@ -131,6 +131,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
   // DOM refs
   const stageWrapRef = useRef<HTMLDivElement>(null);
   const hiddenRef = useRef<HTMLTextAreaElement>(null);
+  const hasSavedRef = useRef(false);
 
   // derive font size so 10 lines fill inner height exactly
   const innerHeight = Math.max(0, panelH - PAD_T - PAD_B);
@@ -297,7 +298,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     let mins = startedAt ? minutesElapsed(startedAt, end) : 0;
 
     // Warm-up floor while running to avoid first-keystroke spikes
-    if (!endedAt) {
+       if (!endedAt) {
       const FLOOR = 2 / 60; // 2 seconds
       if (mins < FLOOR) mins = FLOOR;
     } else {
@@ -325,6 +326,48 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     }
   }, [input, target.length, state]);
 
+  // Save score to leaderboard once per finished run
+  useEffect(() => {
+    if (
+      state !== "done" ||
+      !isSignedIn ||
+      !startedAt ||
+      !endedAt ||
+      hasSavedRef.current
+    ) {
+      return;
+    }
+
+    hasSavedRef.current = true;
+
+    const saveScore = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        console.warn("No logged-in user, skipping score save");
+        return;
+      }
+
+      const mins = minutesElapsed(startedAt, endedAt);
+      const codePerMinute = Math.round(input.length / Math.max(mins, 1e-6));
+
+      const { error } = await supabase.from("leaderboard").insert({
+        user_id: user.id,
+        language: lang,
+        code_per_minute: codePerMinute,
+      });
+
+      if (error) {
+        console.error("Error saving score:", error);
+      }
+    };
+
+    void saveScore();
+  }, [state, isSignedIn, startedAt, endedAt, input.length, lang]);
+
   // ---- controls ----
   function restart(
     nextBlocks?: number,
@@ -349,6 +392,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     setStartedAt(null);
     setEndedAt(null);
     setFocusMode(false); // reset; typing will enable it again
+    hasSavedRef.current = false;
     hiddenRef.current?.focus();
   }
 
@@ -419,45 +463,44 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
       return;
     }
     // Enter → insert the exact run of target newlines, then indent of the first non-empty line after them
-if (e.key === "Enter") {
-  e.preventDefault();
-  setInput((prev) => {
-    const caret = prev.length;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      setInput((prev) => {
+        const caret = prev.length;
 
-    // 1) Add the exact newline run from target (preserves block jumps)
-    let add = "\n";
-    if (caret < target.length && isNL(target[caret])) {
-      add = consumeWhile(target, caret, isNL); // may be "\n\n" etc.
-    }
-
-    // 2) Append indentation from the first non-empty line after that run
-    if (autoIndent) {
-      let scan = caret + add.length;
-      let indent = "";
-
-      while (scan < target.length) {
-        const start = scan;
-        while (scan < target.length && isSpace(target[scan])) scan++;
-
-        // if this line has code, capture its leading spaces/tabs
-        if (scan < target.length && target[scan] !== "\n") {
-          indent = target.slice(start, scan);
-          break;
+        // 1) Add the exact newline run from target (preserves block jumps)
+        let add = "\n";
+        if (caret < target.length && isNL(target[caret])) {
+          add = consumeWhile(target, caret, isNL); // may be "\n\n" etc.
         }
 
-        // empty line → skip to the next line
-        const nl = target.indexOf("\n", scan);
-        if (nl === -1) break;
-        scan = nl + 1;
-      }
-      add += indent;
+        // 2) Append indentation from the first non-empty line after that run
+        if (autoIndent) {
+          let scan = caret + add.length;
+          let indent = "";
+
+          while (scan < target.length) {
+            const start = scan;
+            while (scan < target.length && isSpace(target[scan])) scan++;
+
+            // if this line has code, capture its leading spaces/tabs
+            if (scan < target.length && target[scan] !== "\n") {
+              indent = target.slice(start, scan);
+              break;
+            }
+
+            // empty line → skip to the next line
+            const nl = target.indexOf("\n", scan);
+            if (nl === -1) break;
+            scan = nl + 1;
+          }
+          add += indent;
+        }
+
+        return (prev + add).slice(0, target.length);
+      });
+      return;
     }
-
-    return (prev + add).slice(0, target.length);
-  });
-  return;
-}
-
   }
 
   // ------ fixed 10-line window ------
@@ -581,6 +624,18 @@ if (e.key === "Enter") {
             {progress}%
           </div>
         </div>
+
+        {/* View leaderboard button (left of profile) */}
+        <button
+          className="mk-pill"
+          type="button"
+          onClick={() => {
+            window.location.hash = "#/leaderboardPage";
+          }}
+          aria-label="View leaderboard"
+        >
+          View leaderboard
+        </button>
 
         {/* Profile button */}
         <div

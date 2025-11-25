@@ -5,8 +5,9 @@ import App from "./App";
 import Login from "./Login";
 import ResetPassword from "./ResetPassword";
 import Profile from "./Profile";
+import LeaderboardPage from "./leaderboardPage"; // 👈 important
 import { supabase } from "./lib/supabaseClient";
-import Header from "./Header";              
+import Header from "./Header";
 import "./styles.css";
 
 function Router() {
@@ -44,25 +45,30 @@ function Router() {
   if (!booted) return null;
 
   let page: React.ReactNode = <App isSignedIn={isSignedIn} />;
-  if (hash === "#/login") page = <Login />;
-  else if (hash === "#/reset") page = <ResetPassword />;
-  else if (hash === "#/profile") {
+
+  if (hash === "#/login") {
+    page = <Login />;
+  } else if (hash === "#/reset") {
+    page = <ResetPassword />;
+  } else if (hash === "#/profile") {
     page = isSignedIn ? (
       <Profile onBack={() => (window.location.hash = "")} userLabel={userLabel} />
     ) : (
       <Login />
     );
+  } else if (hash === "#/leaderboardPage") {
+    page = <LeaderboardPage />; // new route
   }
 
   return (
     <>
-      <Header />     {/* ← always visible brand */}
+      <Header />
       {page}
     </>
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <Router />
   </React.StrictMode>
