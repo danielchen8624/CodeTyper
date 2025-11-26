@@ -247,7 +247,7 @@ export default function Profile({
         }}
       >
         <button className="mini" onClick={onBack} aria-label="Back">
-          ← Back
+          Back
         </button>
         <div style={{ opacity: 0.6, fontSize: 12 }}>Profile</div>
       </div>
