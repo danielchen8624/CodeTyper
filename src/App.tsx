@@ -326,7 +326,8 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     }
   }, [input, target.length, state]);
 
-  // Save score to leaderboard once per finished run
+  // Save score to leaderboard once per finished run + log run in `runs`
+   // Save score to leaderboard once per finished run + log run in `runs`
   useEffect(() => {
     if (state !== "done") return;
 
@@ -337,7 +338,8 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
       alreadySaved: hasSavedRef.current,
     });
 
-    if (!isSignedIn || !startedAt || !endedAt || hasSavedRef.current) return;
+    // now we always save a run, even if not signed in
+    if (!startedAt || !endedAt || hasSavedRef.current) return;
 
     hasSavedRef.current = true;
 
@@ -347,58 +349,97 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError || !data.user) {
-        console.error("No logged-in user, skipping score save", userError);
-        return;
+      const user = data?.user ?? null;
+
+      // If logged in, keep doing your users + leaderboard stuff
+      if (user && !userError) {
+        const usernameFromMeta =
+          (user.user_metadata as any)?.username ??
+          user.email?.split("@")[0] ??
+          "anon";
+
+        const { error: upsertErr } = await supabase
+          .from("users")
+          .upsert(
+            {
+              id: user.id,
+              email: user.email,
+              username: usernameFromMeta,
+            },
+            { onConflict: "id" }
+          );
+
+        if (upsertErr) {
+          console.error("Error upserting into users:", upsertErr);
+        } else {
+          const mins = minutesElapsed(startedAt, endedAt);
+          const codePerMinute = Math.round(
+            input.length / Math.max(mins, 1e-6)
+          );
+
+          const { error: lbErr } = await supabase.from("leaderboard").insert({
+            user_id: user.id,
+            language: lang,
+            code_per_minute: codePerMinute,
+          });
+
+          if (lbErr) {
+            console.error("Error saving score:", lbErr);
+          } else {
+            console.log("Saved score to leaderboard:", {
+              language: lang,
+              codePerMinute,
+            });
+          }
+        }
+      } else if (userError) {
+        console.warn("No logged-in user, skipping leaderboard save", userError);
       }
 
-      const user = data.user;
-
-      // Make sure there is a matching row in public.users for FK
-      const usernameFromMeta =
-        (user.user_metadata as any)?.username ??
-        user.email?.split("@")[0] ??
-        "anon";
-
-      const { error: upsertErr } = await supabase
-        .from("users")
-        .upsert(
-          {
-            id: user.id,
-            email: user.email,
-            username: usernameFromMeta,
-          },
-          { onConflict: "id" }
-        );
-
-      if (upsertErr) {
-        console.error("Error upserting into users:", upsertErr);
-        return;
-      }
-
-      const mins = minutesElapsed(startedAt, endedAt);
-      const codePerMinute = Math.round(
-        input.length / Math.max(mins, 1e-6)
-      );
-
-      const { error: lbErr } = await supabase.from("leaderboard").insert({
-        user_id: user.id,
-        language: lang,
-        code_per_minute: codePerMinute,
+      // Always log the run (anon or not)
+      const durationMs = endedAt - startedAt;
+      const { error: runErr } = await supabase.from("runs").insert({
+        user_id: user ? user.id : null,
+        is_anon: !user,
+        started_at: new Date(startedAt).toISOString(),
+        ended_at: new Date(endedAt).toISOString(),
+        duration_ms: durationMs,
+        lang,
+        concept,
+        wpm,
+        raw_wpm: rawWpm,
+        accuracy,
       });
 
-      if (lbErr) {
-        console.error("Error saving score:", lbErr);
+      if (runErr) {
+        console.error("Error saving run:", runErr);
       } else {
-        console.log("Saved score to leaderboard:", {
-          language: lang,
-          codePerMinute,
+        console.log("Saved run:", {
+          lang,
+          concept,
+          wpm,
+          rawWpm,
+          accuracy,
+          durationMs,
+          userId: user ? user.id : null,
         });
       }
     };
 
     void saveScore();
-  }, [state, isSignedIn, startedAt, endedAt, input.length, lang]);
+  }, [
+    state,
+    isSignedIn,
+    startedAt,
+    endedAt,
+    input.length,
+    lang,
+    concept,
+    wpm,
+    rawWpm,
+    accuracy,
+  ]);
+
 
   // ---- controls ----
   function restart(
@@ -798,6 +839,18 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
             Finished — <strong>{wpm} WPM</strong> (<strong>raw {rawWpm}</strong>
             ), <strong>{accuracy}%</strong> accuracy.
           </div>
+
+          {!isSignedIn && (
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 13,
+                color: "var(--muted)",
+              }}
+            >
+              Log in to be displayed on the leaderboard!
+            </div>
+          )}
         </footer>
       )}
 
@@ -864,5 +917,3 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     </div>
   );
 }
-  
-

@@ -24,16 +24,45 @@ const fmtDur = (ms: number) => {
     .padStart(2, "0")}`;
 };
 
-function useRuns() {
+function useRuns(userId: string | null) {
   const [runs, setRuns] = useState<Run[]>([]);
+
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("codeTyper.runs");
-      setRuns(raw ? (JSON.parse(raw) as Run[]) : []);
-    } catch {
+    if (!userId) {
       setRuns([]);
+      return;
     }
-  }, []);
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("runs")
+        .select("*")
+        .eq("user_id", userId)
+        .order("started_at", { ascending: false })
+        .limit(200);
+
+      if (error) {
+        console.error("Error fetching runs:", error);
+        setRuns([]);
+        return;
+      }
+
+      const mapped: Run[] = (data ?? []).map((r: any) => ({
+        id: r.id,
+        tsStart: new Date(r.started_at).getTime(),
+        tsEnd: new Date(r.ended_at).getTime(),
+        durationMs: r.duration_ms,
+        lang: r.lang,
+        concept: r.concept,
+        wpm: r.wpm,
+        rawWpm: r.raw_wpm,
+        accuracy: r.accuracy,
+      }));
+
+      setRuns(mapped);
+    })();
+  }, [userId]);
+
   return runs;
 }
 
@@ -120,11 +149,13 @@ function Donut({
 export default function Profile({
   onBack,
   userLabel = "You",
+  userId,
 }: {
   onBack: () => void;
   userLabel?: string;
+  userId: string | null;
 }) {
-  const runs = useRuns();
+  const runs = useRuns(userId);
 
   const stats = useMemo(() => {
     const started = runs.length;

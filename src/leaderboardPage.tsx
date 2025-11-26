@@ -39,7 +39,7 @@ export default function LeaderboardPage() {
               <th style={{ textAlign: "left", padding: "6px 4px" }}>User</th>
               <th style={{ textAlign: "left", padding: "6px 4px" }}>Language</th>
               <th style={{ textAlign: "right", padding: "6px 4px" }}>
-                Code / min
+                Words / min
               </th>
             </tr>
           </thead>
@@ -50,7 +50,7 @@ export default function LeaderboardPage() {
                 <td style={{ padding: "4px" }}>{row.username}</td>
                 <td style={{ padding: "4px" }}>{row.language}</td>
                 <td style={{ padding: "4px", textAlign: "right" }}>
-                  {row.code_per_minute}
+                  {Math.round(row.code_per_minute / 5)}
                 </td>
               </tr>
             ))}

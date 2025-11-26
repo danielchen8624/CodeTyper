@@ -14,6 +14,7 @@ function Router() {
   const [hash, setHash] = React.useState<string>(window.location.hash);
   const [isSignedIn, setIsSignedIn] = React.useState<boolean>(false);
   const [userLabel, setUserLabel] = React.useState<string | undefined>();
+  const [userId, setUserId] = React.useState<string | null>(null);
   const [booted, setBooted] = React.useState<boolean>(false);
 
   React.useEffect(() => {
@@ -30,11 +31,13 @@ function Router() {
       const session = data.session;
       setIsSignedIn(!!session);
       setUserLabel(session?.user?.email ?? session?.user?.user_metadata?.name);
+      setUserId(session?.user?.id ?? null);
       setBooted(true);
     })();
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       setIsSignedIn(!!session);
       setUserLabel(session?.user?.email ?? session?.user?.user_metadata?.name);
+      setUserId(session?.user?.id ?? null);
     });
     return () => {
       mounted = false;
@@ -52,7 +55,11 @@ function Router() {
     page = <ResetPassword />;
   } else if (hash === "#/profile") {
     page = isSignedIn ? (
-      <Profile onBack={() => (window.location.hash = "")} userLabel={userLabel} />
+      <Profile
+        onBack={() => (window.location.hash = "")}
+        userLabel={userLabel}
+        userId={userId}
+      />
     ) : (
       <Login />
     );
