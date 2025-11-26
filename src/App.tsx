@@ -335,7 +335,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     }
   }, [input, target.length, state]);
 
-  // Save score to leaderboard once per finished run
+  // Save run + leaderboard once per finished run
   useEffect(() => {
     if (state !== "done") return;
 
@@ -346,21 +346,46 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
       alreadySaved: hasSavedRef.current,
     });
 
-    if (!isSignedIn || !startedAt || !endedAt || hasSavedRef.current) return;
+    if (!startedAt || !endedAt || hasSavedRef.current) return;
 
     hasSavedRef.current = true;
 
     const saveScore = async () => {
+      // If they’re not signed in, still save an anon run (but no leaderboard row)
       const { data, error: userError } = await supabase.auth.getUser();
 
-      if (userError || !data.user) {
-        console.error("No logged-in user, skipping score save", userError);
-        return;
+      const user = data?.user ?? null;
+      const isAnon = !user;
+
+      if (userError) {
+        console.error("getUser error:", userError);
       }
 
-      const user = data.user;
+      const mins = minutesElapsed(startedAt, endedAt);
+      const durationMs = endedAt - startedAt;
+      const codePerMinute = Math.round(input.length / Math.max(mins, 1e-6));
 
-      // Make sure there is a matching row in public.users for FK
+      // 1) INSERT into runs
+      const { error: runsErr } = await supabase.from("runs").insert({
+        user_id: user ? user.id : null,
+        started_at: new Date(startedAt).toISOString(),
+        ended_at: new Date(endedAt).toISOString(),
+        duration_ms: durationMs,
+        lang,
+        concept,
+        wpm,
+        raw_wpm: rawWpm,
+        accuracy,
+        is_anon: isAnon,
+      });
+
+      if (runsErr) {
+        console.error("Error inserting into runs:", runsErr);
+      }
+
+      // 2) Only put logged-in users on the leaderboard
+      if (!user) return;
+
       const usernameFromMeta =
         (user.user_metadata as any)?.username ??
         user.email?.split("@")[0] ??
@@ -380,9 +405,6 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
         return;
       }
 
-      const mins = minutesElapsed(startedAt, endedAt);
-      const codePerMinute = Math.round(input.length / Math.max(mins, 1e-6));
-
       const { error: lbErr } = await supabase.from("leaderboard").insert({
         user_id: user.id,
         language: lang,
@@ -390,7 +412,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
       });
 
       if (lbErr) {
-        console.error("Error saving score:", lbErr);
+        console.error("Error saving score to leaderboard:", lbErr);
       } else {
         console.log("Saved score to leaderboard:", {
           language: lang,
@@ -400,49 +422,19 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     };
 
     void saveScore();
-  }, [state, isSignedIn, startedAt, endedAt, input.length, lang]);
+  }, [
+    state,
+    startedAt,
+    endedAt,
+    input.length,
+    lang,
+    concept,
+    wpm,
+    rawWpm,
+    accuracy,
+    isSignedIn,
+  ]);
 
-  // Save EVERY run into runs table (anon or signed-in)
-  useEffect(() => {
-    if (state !== "done" || !startedAt || !endedAt || hasRunSavedRef.current) {
-      return;
-    }
-
-    hasRunSavedRef.current = true;
-
-    const saveRun = async () => {
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        const userId = userData.user?.id ?? null;
-
-        const tsStart = new Date(startedAt);
-        const tsEnd = new Date(endedAt);
-        const durationMs = endedAt - startedAt;
-
-        const { error } = await supabase.from("runs").insert({
-          user_id: userId,
-          ts_start: tsStart.toISOString(),
-          ts_end: tsEnd.toISOString(),
-          duration_ms: durationMs,
-          lang,
-          concept,
-          wpm,
-          raw_wpm: rawWpm,
-          accuracy,
-        });
-
-        if (error) {
-          console.error("Error saving run:", error);
-        }
-      } catch (e) {
-        console.error("Error in saveRun:", e);
-      }
-    };
-
-    void saveRun();
-  }, [state, startedAt, endedAt, lang, concept, wpm, rawWpm, accuracy]);
-
-  // 🆕 Send feedback handler
   async function handleSubmitFeedback(e: React.FormEvent) {
     e.preventDefault();
     if (!feedbackText.trim()) return;

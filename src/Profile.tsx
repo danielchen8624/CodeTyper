@@ -39,7 +39,7 @@ function useRuns(userId: string | null) {
     const fetchRuns = async () => {
       const { data, error } = await supabase
         .from("runs")
-        .select("*")                         // <- no fragile column list
+        .select("*") // <- no fragile column list
         .eq("user_id", userId)
         .order("created_at", { ascending: false }) // <- use created_at if you have it
         .limit(200);
@@ -60,9 +60,7 @@ function useRuns(userId: string | null) {
           ? new Date(row.created_at).getTime()
           : 0;
 
-        const tsEnd = row.ts_end
-          ? new Date(row.ts_end).getTime()
-          : tsStart;
+        const tsEnd = row.ts_end ? new Date(row.ts_end).getTime() : tsStart;
 
         const durationMs =
           row.duration_ms ?? (tsEnd && tsStart ? tsEnd - tsStart : 0);
@@ -91,7 +89,6 @@ function useRuns(userId: string | null) {
 
   return runs;
 }
-
 
 type PieDatum = { key: string; value: number };
 
@@ -148,13 +145,18 @@ function Donut({
         </text>
       </svg>
       <div style={{ fontSize: 12, color: "var(--muted)" }}>{title}</div>
-      <div style={{ display: "grid", gap: 4, fontSize: 12, color: "var(--muted)" }}>
+      <div
+        style={{ display: "grid", gap: 4, fontSize: 12, color: "var(--muted)" }}
+      >
         {data
           .filter((d) => d.value > 0)
           .sort((a, b) => b.value - a.value)
           .slice(0, 6)
           .map((d, i) => (
-            <div key={d.key} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div
+              key={d.key}
+              style={{ display: "flex", gap: 8, alignItems: "center" }}
+            >
               <span
                 style={{
                   width: 8,
@@ -188,11 +190,12 @@ export default function Profile({
     const started = runs.length;
     const completed = runs.length;
     const timeMs = runs.reduce((a, r) => a + r.durationMs, 0);
-    const bestWpm = runs.reduce((a, r) => Math.max(a, r.wpm), 0);
+    const bestWpm = runs.reduce((a, r) => Math.max(a, r.rawWpm), 0);
     const avgWpm =
       runs.length === 0
         ? 0
-        : Math.round(runs.reduce((a, r) => a + r.wpm, 0) / runs.length);
+        : Math.round(runs.reduce((a, r) => a + r.rawWpm, 0) / runs.length);
+
     const avgAcc =
       runs.length === 0
         ? 0
@@ -210,7 +213,17 @@ export default function Profile({
 
     const recent = [...runs].sort((a, b) => b.tsEnd - a.tsEnd).slice(0, 8);
 
-    return { started, completed, timeMs, bestWpm, avgWpm, avgAcc, langData, modeData, recent };
+    return {
+      started,
+      completed,
+      timeMs,
+      bestWpm,
+      avgWpm,
+      avgAcc,
+      langData,
+      modeData,
+      recent,
+    };
   }, [runs]);
 
   async function handleSignOut() {
@@ -269,9 +282,10 @@ export default function Profile({
         <div style={{ display: "grid", gap: 6 }}>
           <div style={{ fontSize: 18, fontWeight: 600 }}>{userLabel}</div>
           <div style={{ color: "var(--muted)", fontSize: 12 }}>
-            tests started <b style={{ color: "var(--fg)" }}>{stats.started}</b> · tests completed{" "}
-            <b style={{ color: "var(--fg)" }}>{stats.completed}</b> · time typing{" "}
-            <b style={{ color: "var(--fg)" }}>{fmtDur(stats.timeMs)}</b>
+            tests started <b style={{ color: "var(--fg)" }}>{stats.started}</b>{" "}
+            · tests completed{" "}
+            <b style={{ color: "var(--fg)" }}>{stats.completed}</b> · time
+            typing <b style={{ color: "var(--fg)" }}>{fmtDur(stats.timeMs)}</b>
           </div>
         </div>
         <div
@@ -334,7 +348,9 @@ export default function Profile({
           padding: 12,
         }}
       >
-        <div style={{ color: "var(--muted)", fontSize: 12, margin: "0 4px 6px" }}>
+        <div
+          style={{ color: "var(--muted)", fontSize: 12, margin: "0 4px 6px" }}
+        >
           recent results
         </div>
         <div
@@ -347,7 +363,9 @@ export default function Profile({
           }}
         >
           {stats.recent.length === 0 ? (
-            <div style={{ color: "var(--muted)", padding: 8 }}>No results yet.</div>
+            <div style={{ color: "var(--muted)", padding: 8 }}>
+              No results yet.
+            </div>
           ) : (
             stats.recent.map((r) => (
               <div key={r.id} style={{ display: "contents" }}>
