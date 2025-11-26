@@ -5,7 +5,7 @@ import App from "./App";
 import Login from "./Login";
 import ResetPassword from "./ResetPassword";
 import Profile from "./Profile";
-import LeaderboardPage from "./leaderboardPage"; // 👈 important
+import LeaderboardPage from "./leaderboardPage";
 import { supabase } from "./lib/supabaseClient";
 import Header from "./Header";
 import "./styles.css";
@@ -25,20 +25,28 @@ function Router() {
 
   React.useEffect(() => {
     let mounted = true;
+
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (!mounted) return;
+
       const session = data.session;
       setIsSignedIn(!!session);
-      setUserLabel(session?.user?.email ?? session?.user?.user_metadata?.name);
+      setUserLabel(
+        session?.user?.email ?? (session?.user?.user_metadata as any)?.name
+      );
       setUserId(session?.user?.id ?? null);
       setBooted(true);
     })();
+
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       setIsSignedIn(!!session);
-      setUserLabel(session?.user?.email ?? session?.user?.user_metadata?.name);
+      setUserLabel(
+        session?.user?.email ?? (session?.user?.user_metadata as any)?.name
+      );
       setUserId(session?.user?.id ?? null);
     });
+
     return () => {
       mounted = false;
       sub.subscription.unsubscribe();
@@ -64,7 +72,7 @@ function Router() {
       <Login />
     );
   } else if (hash === "#/leaderboardPage") {
-    page = <LeaderboardPage />; // new route
+    page = <LeaderboardPage />;
   }
 
   return (

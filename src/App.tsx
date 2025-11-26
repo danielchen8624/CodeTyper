@@ -140,6 +140,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
   const stageWrapRef = useRef<HTMLDivElement>(null);
   const hiddenRef = useRef<HTMLTextAreaElement>(null);
   const hasSavedRef = useRef(false);
+  const hasRunSavedRef = useRef(false); // 🆕
 
   // derive font size so 10 lines fill inner height exactly
   const innerHeight = Math.max(0, panelH - PAD_T - PAD_B);
@@ -401,6 +402,46 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     void saveScore();
   }, [state, isSignedIn, startedAt, endedAt, input.length, lang]);
 
+  // Save EVERY run into runs table (anon or signed-in)
+  useEffect(() => {
+    if (state !== "done" || !startedAt || !endedAt || hasRunSavedRef.current) {
+      return;
+    }
+
+    hasRunSavedRef.current = true;
+
+    const saveRun = async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData.user?.id ?? null;
+
+        const tsStart = new Date(startedAt);
+        const tsEnd = new Date(endedAt);
+        const durationMs = endedAt - startedAt;
+
+        const { error } = await supabase.from("runs").insert({
+          user_id: userId,
+          ts_start: tsStart.toISOString(),
+          ts_end: tsEnd.toISOString(),
+          duration_ms: durationMs,
+          lang,
+          concept,
+          wpm,
+          raw_wpm: rawWpm,
+          accuracy,
+        });
+
+        if (error) {
+          console.error("Error saving run:", error);
+        }
+      } catch (e) {
+        console.error("Error in saveRun:", e);
+      }
+    };
+
+    void saveRun();
+  }, [state, startedAt, endedAt, lang, concept, wpm, rawWpm, accuracy]);
+
   // 🆕 Send feedback handler
   async function handleSubmitFeedback(e: React.FormEvent) {
     e.preventDefault();
@@ -422,15 +463,11 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
 
     setFeedbackStatus("sent");
     setFeedbackText("");
-  }
-
-  // 🆕 Close feedback modal helper
-  function closeFeedbackModal() {
-    if (feedbackStatus === "sending") return;
-    setShowFeedbackModal(false);
-    setFeedbackStatus("idle");
-    setFeedbackError(null);
-    setFeedbackText("");
+    // auto-close after a short delay
+    setTimeout(() => {
+      setShowFeedbackModal(false);
+      setFeedbackStatus("idle");
+    }, 800);
   }
 
   // ---- controls ----
@@ -458,6 +495,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     setEndedAt(null);
     setFocusMode(false); // reset; typing will enable it again
     hasSavedRef.current = false;
+    hasRunSavedRef.current = false; // 🆕 reset run-saving flag
     hiddenRef.current?.focus();
   }
 
@@ -849,11 +887,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
       {/* Bottom-left feedback link (fixed) */}
       <button
         className="feedback-link-fixed dim-on-focus"
-        onClick={() => {
-          setShowFeedbackModal(true);
-          setFeedbackStatus("idle");
-          setFeedbackError(null);
-        }}
+        onClick={() => setShowFeedbackModal(true)}
         aria-label="Send feedback"
       >
         Send feedback
@@ -911,7 +945,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
         </div>
       )}
 
-      {/* 🆕 Minimal feedback modal */}
+      {/* Minimal feedback modal */}
       {showFeedbackModal && (
         <div
           style={{
@@ -923,7 +957,9 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
             justifyContent: "center",
             zIndex: 50,
           }}
-          onClick={closeFeedbackModal}
+          onClick={() => {
+            if (feedbackStatus !== "sending") setShowFeedbackModal(false);
+          }}
         >
           <div
             className="settings-card"
@@ -948,81 +984,66 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
               Tell us what you liked, what felt off, or what you’d change.
             </p>
 
-            {feedbackStatus !== "sent" ? (
-              <form
-                onSubmit={handleSubmitFeedback}
-                style={{ display: "grid", gap: 8 }}
-              >
-                <textarea
-                  value={feedbackText}
-                  onChange={(e) => setFeedbackText(e.target.value)}
-                  rows={6}
-                  style={{
-                    width: "100%",
-                    height: 140,
-                    resize: "none",
-                    background: "transparent",
-                    borderRadius: 8,
-                    border: "1px solid #232a3a",
-                    padding: 8,
-                    color: "var(--fg)",
-                  }}
-                  placeholder="Type your feedback here…"
-                />
+            <form
+              onSubmit={handleSubmitFeedback}
+              style={{ display: "grid", gap: 8 }}
+            >
+              <textarea
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                rows={6}
+                style={{
+                  width: "100%",
+                  height: 140,
+                  resize: "none",
+                  background: "transparent",
+                  borderRadius: 8,
+                  border: "1px solid #232a3a",
+                  padding: 8,
+                  color: "var(--fg)",
+                }}
+                placeholder="Type your feedback here…"
+              />
 
-                {feedbackError && (
-                  <div style={{ fontSize: 12, color: "#f66" }}>
-                    {feedbackError}
-                  </div>
-                )}
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 8,
-                    marginTop: 4,
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="mini"
-                    onClick={closeFeedbackModal}
-                    disabled={feedbackStatus === "sending"}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="mini"
-                    disabled={
-                      feedbackStatus === "sending" || !feedbackText.trim()
-                    }
-                  >
-                    {feedbackStatus === "sending" ? "Sending…" : "Send"}
-                  </button>
+              {feedbackError && (
+                <div style={{ fontSize: 12, color: "#f66" }}>
+                  {feedbackError}
                 </div>
-              </form>
-            ) : (
+              )}
+
+              {feedbackStatus === "sent" && (
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                  Thanks — feedback sent.
+                </div>
+              )}
+
               <div
                 style={{
-                  display: "grid",
-                  gap: 12,
-                  fontSize: 14,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 8,
+                  marginTop: 4,
                 }}
               >
-                <div>Thanks! Got your feedback. 🐧</div>
-                <div style={{ textAlign: "right" }}>
-                  <button
-                    className="mini"
-                    type="button"
-                    onClick={closeFeedbackModal}
-                  >
-                    Close
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="mini"
+                  onClick={() => setShowFeedbackModal(false)}
+                  disabled={feedbackStatus === "sending"}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="mini"
+                  disabled={
+                    feedbackStatus === "sending" || !feedbackText.trim()
+                  }
+                >
+                  {feedbackStatus === "sending" ? "Sending…" : "Send"}
+                </button>
               </div>
-            )}
+            </form>
           </div>
         </div>
       )}

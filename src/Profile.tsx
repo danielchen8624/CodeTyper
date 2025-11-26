@@ -1,6 +1,6 @@
 // Profile.tsx
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "./lib/supabaseClient"; // <-- assumes you have this
+import { supabase } from "./lib/supabaseClient";
 
 type Run = {
   id: string;
@@ -19,11 +19,12 @@ const fmtDur = (ms: number) => {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
-  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${sec
+  return `${h.toString().padStart(2, "0")}:${m
     .toString()
-    .padStart(2, "0")}`;
+    .padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
 };
 
+// load runs for this user from Supabase
 function useRuns(userId: string | null) {
   const [runs, setRuns] = useState<Run[]>([]);
 
@@ -33,38 +34,64 @@ function useRuns(userId: string | null) {
       return;
     }
 
-    (async () => {
+    let cancelled = false;
+
+    const fetchRuns = async () => {
       const { data, error } = await supabase
         .from("runs")
-        .select("*")
+        .select("*")                         // <- no fragile column list
         .eq("user_id", userId)
-        .order("started_at", { ascending: false })
+        .order("created_at", { ascending: false }) // <- use created_at if you have it
         .limit(200);
 
       if (error) {
-        console.error("Error fetching runs:", error);
-        setRuns([]);
+        console.error("Error loading runs:", error.message, error.details);
+        if (!cancelled) setRuns([]);
         return;
       }
 
-      const mapped: Run[] = (data ?? []).map((r: any) => ({
-        id: r.id,
-        tsStart: new Date(r.started_at).getTime(),
-        tsEnd: new Date(r.ended_at).getTime(),
-        durationMs: r.duration_ms,
-        lang: r.lang,
-        concept: r.concept,
-        wpm: r.wpm,
-        rawWpm: r.raw_wpm,
-        accuracy: r.accuracy,
-      }));
+      if (cancelled || !data) return;
+
+      const mapped: Run[] = (data as any[]).map((row) => {
+        // try to pull times from whatever you have
+        const tsStart = row.ts_start
+          ? new Date(row.ts_start).getTime()
+          : row.created_at
+          ? new Date(row.created_at).getTime()
+          : 0;
+
+        const tsEnd = row.ts_end
+          ? new Date(row.ts_end).getTime()
+          : tsStart;
+
+        const durationMs =
+          row.duration_ms ?? (tsEnd && tsStart ? tsEnd - tsStart : 0);
+
+        return {
+          id: row.id,
+          tsStart,
+          tsEnd,
+          durationMs,
+          lang: row.lang,
+          concept: row.concept,
+          wpm: row.wpm,
+          rawWpm: row.raw_wpm,
+          accuracy: row.accuracy,
+        };
+      });
 
       setRuns(mapped);
-    })();
+    };
+
+    fetchRuns();
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   return runs;
 }
+
 
 type PieDatum = { key: string; value: number };
 
@@ -163,9 +190,13 @@ export default function Profile({
     const timeMs = runs.reduce((a, r) => a + r.durationMs, 0);
     const bestWpm = runs.reduce((a, r) => Math.max(a, r.wpm), 0);
     const avgWpm =
-      runs.length === 0 ? 0 : Math.round(runs.reduce((a, r) => a + r.wpm, 0) / runs.length);
+      runs.length === 0
+        ? 0
+        : Math.round(runs.reduce((a, r) => a + r.wpm, 0) / runs.length);
     const avgAcc =
-      runs.length === 0 ? 0 : Math.round(runs.reduce((a, r) => a + r.accuracy, 0) / runs.length);
+      runs.length === 0
+        ? 0
+        : Math.round(runs.reduce((a, r) => a + r.accuracy, 0) / runs.length);
 
     const byLang = new Map<string, number>();
     const byMode = new Map<string, number>();
@@ -184,14 +215,10 @@ export default function Profile({
 
   async function handleSignOut() {
     try {
-      if (supabase) {
-        await supabase.auth.signOut();
-      }
+      await supabase.auth.signOut();
     } catch (e) {
       console.warn("Sign out error:", e);
     } finally {
-      // optional: wipe any cached user-related local data if you store some
-      // localStorage.removeItem("codeTyper.user");
       window.location.hash = "#/login";
     }
   }
@@ -207,7 +234,7 @@ export default function Profile({
         }}
       >
         <button className="mini" onClick={onBack} aria-label="Back">
-          Back
+          ← Back
         </button>
         <div style={{ opacity: 0.6, fontSize: 12 }}>Profile</div>
       </div>
