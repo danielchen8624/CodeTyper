@@ -11,7 +11,7 @@ export async function fetchLeaderboard(
   limit = 50
 ): Promise<LeaderboardRow[]> {
   const { data, error } = await supabase
-    .from("leaderboard_with_usernames")
+    .from("leaderboard_best_per_user")
     .select("username, language, code_per_minute")
     .order("code_per_minute", { ascending: false })
     .limit(limit);
