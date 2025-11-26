@@ -133,6 +133,28 @@ export default function AuthPage() {
           </button>
         </div>
       </form>
+
+      {/* centered line under the card */}
+      <div
+        style={{
+          marginTop: 12,
+          textAlign: "center",
+          fontSize: 13,
+          color: "var(--muted)",
+        }}
+      >
+        pengucode does not store passwords.
+      </div>
+      <div
+        style={{
+          marginTop: 12,
+          textAlign: "center",
+          fontSize: 13,
+          color: "var(--muted)",
+        }}
+      >
+        pick a random password if you think we're hackers!
+      </div>
     </div>
   );
 }
