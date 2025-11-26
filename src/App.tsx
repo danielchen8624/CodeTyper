@@ -120,6 +120,14 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
 
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
+  // 🆕 Feedback modal state
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackStatus, setFeedbackStatus] = useState<
+    "idle" | "sending" | "sent" | "error"
+  >("idle");
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+
   // resizable panel height
   const [panelH, setPanelH] = useState<number>(320);
 
@@ -326,8 +334,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     }
   }, [input, target.length, state]);
 
-  // Save score to leaderboard once per finished run + log run in `runs`
-   // Save score to leaderboard once per finished run + log run in `runs`
+  // Save score to leaderboard once per finished run
   useEffect(() => {
     if (state !== "done") return;
 
@@ -338,108 +345,93 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
       alreadySaved: hasSavedRef.current,
     });
 
-    // now we always save a run, even if not signed in
-    if (!startedAt || !endedAt || hasSavedRef.current) return;
+    if (!isSignedIn || !startedAt || !endedAt || hasSavedRef.current) return;
 
     hasSavedRef.current = true;
 
     const saveScore = async () => {
-      const {
-        data,
-        error: userError,
-      } = await supabase.auth.getUser();
+      const { data, error: userError } = await supabase.auth.getUser();
 
-      const user = data?.user ?? null;
-
-      // If logged in, keep doing your users + leaderboard stuff
-      if (user && !userError) {
-        const usernameFromMeta =
-          (user.user_metadata as any)?.username ??
-          user.email?.split("@")[0] ??
-          "anon";
-
-        const { error: upsertErr } = await supabase
-          .from("users")
-          .upsert(
-            {
-              id: user.id,
-              email: user.email,
-              username: usernameFromMeta,
-            },
-            { onConflict: "id" }
-          );
-
-        if (upsertErr) {
-          console.error("Error upserting into users:", upsertErr);
-        } else {
-          const mins = minutesElapsed(startedAt, endedAt);
-          const codePerMinute = Math.round(
-            input.length / Math.max(mins, 1e-6)
-          );
-
-          const { error: lbErr } = await supabase.from("leaderboard").insert({
-            user_id: user.id,
-            language: lang,
-            code_per_minute: codePerMinute,
-          });
-
-          if (lbErr) {
-            console.error("Error saving score:", lbErr);
-          } else {
-            console.log("Saved score to leaderboard:", {
-              language: lang,
-              codePerMinute,
-            });
-          }
-        }
-      } else if (userError) {
-        console.warn("No logged-in user, skipping leaderboard save", userError);
+      if (userError || !data.user) {
+        console.error("No logged-in user, skipping score save", userError);
+        return;
       }
 
-      // Always log the run (anon or not)
-      const durationMs = endedAt - startedAt;
-      const { error: runErr } = await supabase.from("runs").insert({
-        user_id: user ? user.id : null,
-        is_anon: !user,
-        started_at: new Date(startedAt).toISOString(),
-        ended_at: new Date(endedAt).toISOString(),
-        duration_ms: durationMs,
-        lang,
-        concept,
-        wpm,
-        raw_wpm: rawWpm,
-        accuracy,
+      const user = data.user;
+
+      // Make sure there is a matching row in public.users for FK
+      const usernameFromMeta =
+        (user.user_metadata as any)?.username ??
+        user.email?.split("@")[0] ??
+        "anon";
+
+      const { error: upsertErr } = await supabase.from("users").upsert(
+        {
+          id: user.id,
+          email: user.email,
+          username: usernameFromMeta,
+        },
+        { onConflict: "id" }
+      );
+
+      if (upsertErr) {
+        console.error("Error upserting into users:", upsertErr);
+        return;
+      }
+
+      const mins = minutesElapsed(startedAt, endedAt);
+      const codePerMinute = Math.round(input.length / Math.max(mins, 1e-6));
+
+      const { error: lbErr } = await supabase.from("leaderboard").insert({
+        user_id: user.id,
+        language: lang,
+        code_per_minute: codePerMinute,
       });
 
-      if (runErr) {
-        console.error("Error saving run:", runErr);
+      if (lbErr) {
+        console.error("Error saving score:", lbErr);
       } else {
-        console.log("Saved run:", {
-          lang,
-          concept,
-          wpm,
-          rawWpm,
-          accuracy,
-          durationMs,
-          userId: user ? user.id : null,
+        console.log("Saved score to leaderboard:", {
+          language: lang,
+          codePerMinute,
         });
       }
     };
 
     void saveScore();
-  }, [
-    state,
-    isSignedIn,
-    startedAt,
-    endedAt,
-    input.length,
-    lang,
-    concept,
-    wpm,
-    rawWpm,
-    accuracy,
-  ]);
+  }, [state, isSignedIn, startedAt, endedAt, input.length, lang]);
 
+  // 🆕 Send feedback handler
+  async function handleSubmitFeedback(e: React.FormEvent) {
+    e.preventDefault();
+    if (!feedbackText.trim()) return;
+
+    setFeedbackStatus("sending");
+    setFeedbackError(null);
+
+    const { error } = await supabase.from("feedback").insert({
+      message: feedbackText.trim(),
+    });
+
+    if (error) {
+      console.error("Error sending feedback:", error);
+      setFeedbackStatus("error");
+      setFeedbackError("Something went wrong. Please try again.");
+      return;
+    }
+
+    setFeedbackStatus("sent");
+    setFeedbackText("");
+  }
+
+  // 🆕 Close feedback modal helper
+  function closeFeedbackModal() {
+    if (feedbackStatus === "sending") return;
+    setShowFeedbackModal(false);
+    setFeedbackStatus("idle");
+    setFeedbackError(null);
+    setFeedbackText("");
+  }
 
   // ---- controls ----
   function restart(
@@ -501,7 +493,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     setFocusMode(false);
   }
 
-  // Typing handlers — enter focus mode only while NOT done (avoid TS "no overlap" by ordering checks)
+  // Typing handlers — enter focus mode only while NOT done
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setFocusMode(true);
     if (state === "done") return;
@@ -857,7 +849,11 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
       {/* Bottom-left feedback link (fixed) */}
       <button
         className="feedback-link-fixed dim-on-focus"
-        onClick={() => {}}
+        onClick={() => {
+          setShowFeedbackModal(true);
+          setFeedbackStatus("idle");
+          setFeedbackError(null);
+        }}
         aria-label="Send feedback"
       >
         Send feedback
@@ -911,6 +907,122 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
               checked={repeatSame}
               onChange={(e) => setRepeatSame(e.target.checked)}
             />
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Minimal feedback modal */}
+      {showFeedbackModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+          }}
+          onClick={closeFeedbackModal}
+        >
+          <div
+            className="settings-card"
+            style={{
+              position: "relative",
+              maxWidth: 420,
+              width: "90%",
+              margin: "0 auto",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: 8 }}>
+              How can we improve?
+            </h3>
+            <p
+              style={{
+                fontSize: 13,
+                color: "var(--muted)",
+                marginBottom: 8,
+              }}
+            >
+              Tell us what you liked, what felt off, or what you’d change.
+            </p>
+
+            {feedbackStatus !== "sent" ? (
+              <form
+                onSubmit={handleSubmitFeedback}
+                style={{ display: "grid", gap: 8 }}
+              >
+                <textarea
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  rows={6}
+                  style={{
+                    width: "100%",
+                    height: 140,
+                    resize: "none",
+                    background: "transparent",
+                    borderRadius: 8,
+                    border: "1px solid #232a3a",
+                    padding: 8,
+                    color: "var(--fg)",
+                  }}
+                  placeholder="Type your feedback here…"
+                />
+
+                {feedbackError && (
+                  <div style={{ fontSize: 12, color: "#f66" }}>
+                    {feedbackError}
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                    marginTop: 4,
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="mini"
+                    onClick={closeFeedbackModal}
+                    disabled={feedbackStatus === "sending"}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="mini"
+                    disabled={
+                      feedbackStatus === "sending" || !feedbackText.trim()
+                    }
+                  >
+                    {feedbackStatus === "sending" ? "Sending…" : "Send"}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 12,
+                  fontSize: 14,
+                }}
+              >
+                <div>Thanks! Got your feedback. 🐧</div>
+                <div style={{ textAlign: "right" }}>
+                  <button
+                    className="mini"
+                    type="button"
+                    onClick={closeFeedbackModal}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
