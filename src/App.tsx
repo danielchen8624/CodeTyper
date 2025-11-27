@@ -652,393 +652,409 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
 
   // ---- UI ----
   return (
-    <div className={`wrap ${focusMode ? "focus-mode" : ""}`}>
-      {/* Top bar */}
-      <div className="topbar-mk dim-on-focus">
-        <div className="mk-group">
-          <span className="mk-icon">@</span>
-          <span className="mk-label">lang</span>
-          <span className="mk-selectwrap">
-            <select
-              className="mk-select"
-              value={lang}
-              onChange={(e) => switchLang(e.target.value as Lang)}
-            >
-              {LANGS.map((L) => (
-                <option key={L.id} value={L.id}>
-                  {L.label}
-                </option>
-              ))}
-            </select>
-          </span>
-        </div>
+    <div
+      style={{
+        position: "relative",
+        minHeight: "100vh",
+        overflow: "hidden",
+      }}
+    >
+      {/* Aurora background */}
+      <div className="aurora-bg" aria-hidden="true">
+        <div className="aurora-blob aurora-blob-1" />
+        <div className="aurora-blob aurora-blob-2" />
+        <div className="aurora-blob aurora-blob-3" />
+      </div>
 
-        <div className="mk-divider" />
-
-        <div className="mk-group">
-          <span className="mk-icon">A</span>
-          <span className="mk-label">mode</span>
-          <span className="mk-selectwrap">
-            <select
-              className="mk-select"
-              value={concept}
-              onChange={(e) => switchConcept(e.target.value as Concept)}
-            >
-              {CONCEPTS.filter((c) => availableConcepts.includes(c.id)).map(
-                ({ id, label }) => (
-                  <option key={id} value={id}>
-                    {label}
+      <div className={`wrap ${focusMode ? "focus-mode" : ""}`}>
+        {/* Top bar */}
+        <div className="topbar-mk dim-on-focus">
+          <div className="mk-group">
+            <span className="mk-icon">@</span>
+            <span className="mk-label">lang</span>
+            <span className="mk-selectwrap">
+              <select
+                className="mk-select"
+                value={lang}
+                onChange={(e) => switchLang(e.target.value as Lang)}
+              >
+                {LANGS.map((L) => (
+                  <option key={L.id} value={L.id}>
+                    {L.label}
                   </option>
-                )
-              )}
-            </select>
-          </span>
-        </div>
-
-        <div className="mk-spacer" />
-
-        <div className="mk-stats">
-          {state === "done" ? (
-            <>
-              <div className="mk-pill">
-                <strong>WPM</strong>
-                {wpm}
-              </div>
-              <div className="mk-pill">
-                <strong>RAW</strong>
-                {rawWpm}
-              </div>
-              <div className="mk-pill">
-                <strong>ACC</strong>
-                {accuracy}%
-              </div>
-            </>
-          ) : null}
-          <div className="mk-pill">
-            <strong>PROG</strong>
-            {progress}%
+                ))}
+              </select>
+            </span>
           </div>
-        </div>
 
-        {/* View leaderboard button (left of profile) */}
-        <button
-          className="mk-pill"
-          type="button"
-          onClick={() => {
-            window.location.hash = "#/leaderboardPage"; // <- match main.tsx route
-          }}
-          aria-label="View leaderboard"
-        >
-          View leaderboard
-        </button>
+          <div className="mk-divider" />
 
-        {/* Profile button */}
-        <div
-          className="mk-profile dim-on-focus"
-          aria-label="Profile"
-          title="Profile"
-        >
+          <div className="mk-group">
+            <span className="mk-icon">A</span>
+            <span className="mk-label">mode</span>
+            <span className="mk-selectwrap">
+              <select
+                className="mk-select"
+                value={concept}
+                onChange={(e) => switchConcept(e.target.value as Concept)}
+              >
+                {CONCEPTS.filter((c) => availableConcepts.includes(c.id)).map(
+                  ({ id, label }) => (
+                    <option key={id} value={id}>
+                      {label}
+                    </option>
+                  )
+                )}
+              </select>
+            </span>
+          </div>
+
+          <div className="mk-spacer" />
+
+          <div className="mk-stats">
+            {state === "done" ? (
+              <>
+                <div className="mk-pill">
+                  <strong>WPM</strong>
+                  {wpm}
+                </div>
+                <div className="mk-pill">
+                  <strong>RAW</strong>
+                  {rawWpm}
+                </div>
+                <div className="mk-pill">
+                  <strong>ACC</strong>
+                  {accuracy}%
+                </div>
+              </>
+            ) : null}
+            <div className="mk-pill">
+              <strong>PROG</strong>
+              {progress}%
+            </div>
+          </div>
+
+          {/* View leaderboard button (left of profile) */}
           <button
-            className="profile-btn"
+            className="mk-pill"
             type="button"
             onClick={() => {
-              window.location.hash = isSignedIn ? "#/profile" : "#/login";
+              window.location.hash = "#/leaderboardPage"; // <- match main.tsx route
             }}
+            aria-label="View leaderboard"
+          >
+            View leaderboard
+          </button>
+
+          {/* Profile button */}
+          <div
+            className="mk-profile dim-on-focus"
             aria-label="Profile"
             title="Profile"
           >
-            <span className="avatar-circle"></span>
-          </button>
-        </div>
-      </div>
-
-      {/* Hidden textarea */}
-      <textarea
-        ref={hiddenRef}
-        value={input}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        onFocus={() => setHasFocus(true)}
-        onBlur={() => setHasFocus(false)}
-        className="ghost-input"
-        rows={1}
-        readOnly={state === "done"}
-        spellCheck={false}
-        autoCorrect="off"
-        autoCapitalize="off"
-        autoFocus
-      />
-
-      {/* Stage (resizable) */}
-      <div
-        ref={stageWrapRef}
-        className={`stage-wrap ${hasFocus ? "" : "unfocused"}`}
-        style={{ height: panelH }}
-        onClick={() => hiddenRef.current?.focus()}
-      >
-        <main className={`stage ${state === "done" ? "done" : ""}`}>
-          {state !== "done" ? (
-            <div className="text" style={{ fontSize: `${fontPx}px` }}>
-              {visibleChars.map((c, i) => (
-                <span
-                  key={i}
-                  className={
-                    c.status === "correct"
-                      ? "char ok"
-                      : c.status === "wrong"
-                      ? "char bad"
-                      : "char"
-                  }
-                >
-                  {c.ch === " " ? "\u00A0" : c.ch}
-                  {i === caretInSlice ? <span className="caret" /> : null}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div
-              className="text text-scroll"
-              style={{ fontSize: `${fontPx}px` }}
+            <button
+              className="profile-btn"
+              type="button"
+              onClick={() => {
+                window.location.hash = isSignedIn ? "#/profile" : "#/login";
+              }}
+              aria-label="Profile"
+              title="Profile"
             >
-              {fullChars!.map((c, i) => (
-                <span
-                  key={i}
-                  className={
-                    c.status === "correct"
-                      ? "char ok"
-                      : c.status === "wrong"
-                      ? "char bad"
-                      : "char"
-                  }
-                >
-                  {c.ch === " " ? "\u00A0" : c.ch}
-                </span>
-              ))}
-            </div>
-          )}
-        </main>
+              <span className="avatar-circle"></span>
+            </button>
+          </div>
+        </div>
 
-        {/* drag handle */}
-        <div
-          className="resize-handle"
-          onMouseDown={onDragStart}
-          role="separator"
-          aria-label="Resize editor"
-          aria-orientation="vertical"
-          tabIndex={-1}
+        {/* Hidden textarea */}
+        <textarea
+          ref={hiddenRef}
+          value={input}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setHasFocus(true)}
+          onBlur={() => setHasFocus(false)}
+          className="ghost-input"
+          rows={1}
+          readOnly={state === "done"}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
+          autoFocus
         />
 
-        {/* focus hint */}
-        {!hasFocus && !squelchHint && (
-          <div className="focus-indicator" aria-hidden>
-            Click to focus
+        {/* Stage (resizable) */}
+        <div
+          ref={stageWrapRef}
+          className={`stage-wrap ${hasFocus ? "" : "unfocused"}`}
+          style={{ height: panelH }}
+          onClick={() => hiddenRef.current?.focus()}
+        >
+          <main className={`stage ${state === "done" ? "done" : ""}`}>
+            {state !== "done" ? (
+              <div className="text" style={{ fontSize: `${fontPx}px` }}>
+                {visibleChars.map((c, i) => (
+                  <span
+                    key={i}
+                    className={
+                      c.status === "correct"
+                        ? "char ok"
+                        : c.status === "wrong"
+                        ? "char bad"
+                        : "char"
+                    }
+                  >
+                    {c.ch === " " ? "\u00A0" : c.ch}
+                    {i === caretInSlice ? <span className="caret" /> : null}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div
+                className="text text-scroll"
+                style={{ fontSize: `${fontPx}px` }}
+              >
+                {fullChars!.map((c, i) => (
+                  <span
+                    key={i}
+                    className={
+                      c.status === "correct"
+                        ? "char ok"
+                        : c.status === "wrong"
+                        ? "char bad"
+                        : "char"
+                    }
+                  >
+                    {c.ch === " " ? "\u00A0" : c.ch}
+                  </span>
+                ))}
+              </div>
+            )}
+          </main>
+
+          {/* drag handle */}
+          <div
+            className="resize-handle"
+            onMouseDown={onDragStart}
+            role="separator"
+            aria-label="Resize editor"
+            aria-orientation="vertical"
+            tabIndex={-1}
+          />
+
+          {/* focus hint */}
+          {!hasFocus && !squelchHint && (
+            <div className="focus-indicator" aria-hidden>
+              Click to focus
+            </div>
+          )}
+        </div>
+
+        {/* Centered hint */}
+        <div className="center-hint">
+          {isMac ? "⌘" : "Ctrl"} + Return to restart
+        </div>
+
+        {/* Restart icon under hint */}
+        <div className="center-actions">
+          <button
+            className="btn-icon"
+            onMouseDown={() => setSquelchHint(true)}
+            onTouchStart={() => setSquelchHint(true)}
+            onClick={() => restart()}
+            aria-label="Restart test"
+            title="Restart (⌘/Ctrl + Return)"
+          >
+            ↻
+          </button>
+        </div>
+
+        {state === "done" && (
+          <footer className="results dim-on-focus">
+            <div>
+              Finished — <strong>{wpm} WPM</strong> (
+              <strong>raw {rawWpm}</strong>), <strong>{accuracy}%</strong>{" "}
+              accuracy.
+            </div>
+
+            {!isSignedIn && (
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 13,
+                  color: "var(--muted)",
+                }}
+              >
+                Log in to be displayed on the leaderboard!
+              </div>
+            )}
+          </footer>
+        )}
+
+        {/* Bottom-left feedback link (fixed) */}
+        <button
+          className="feedback-link-fixed dim-on-focus"
+          onClick={() => setShowFeedbackModal(true)}
+          aria-label="Send feedback"
+        >
+          Send feedback
+        </button>
+
+        {/* Settings (fixed BR) */}
+        <button
+          className="settings-link-fixed dim-on-focus"
+          onClick={() => setShowSettings((s) => !s)}
+          aria-label="Open settings"
+        >
+          Settings
+        </button>
+
+        {showSettings && (
+          <div className="settings-card dim-on-focus">
+            <div className="settings-row">
+              <label className="settings-label">Blocks</label>
+              <input
+                className="settings-input"
+                type="number"
+                min={1}
+                max={10}
+                value={blocks}
+                onChange={(e) => {
+                  const v = Math.max(
+                    1,
+                    Math.min(10, Number(e.target.value) || 1)
+                  );
+                  setBlocks(v);
+                }}
+              />
+              <button className="mini" onClick={() => restart()}>
+                Apply
+              </button>
+            </div>
+
+            <div className="settings-row">
+              <label className="settings-label">Auto-indent</label>
+              <input
+                type="checkbox"
+                checked={autoIndent}
+                onChange={(e) => setAutoIndent(e.target.checked)}
+              />
+            </div>
+
+            <div className="settings-row">
+              <label className="settings-label">Repeat same test</label>
+              <input
+                type="checkbox"
+                checked={repeatSame}
+                onChange={(e) => setRepeatSame(e.target.checked)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Minimal feedback modal */}
+        {showFeedbackModal && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.6)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 50,
+            }}
+            onClick={() => {
+              if (feedbackStatus !== "sending") setShowFeedbackModal(false);
+            }}
+          >
+            <div
+              className="settings-card"
+              style={{
+                position: "relative",
+                maxWidth: 420,
+                width: "90%",
+                margin: "0 auto",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ marginTop: 0, marginBottom: 8 }}>
+                How can we improve?
+              </h3>
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "var(--muted)",
+                  marginBottom: 8,
+                }}
+              >
+                Tell us what you liked, what felt off, or what you’d change.
+              </p>
+
+              <form
+                onSubmit={handleSubmitFeedback}
+                style={{ display: "grid", gap: 8 }}
+              >
+                <textarea
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  rows={6}
+                  style={{
+                    width: "100%",
+                    height: 140,
+                    resize: "none",
+                    background: "transparent",
+                    borderRadius: 8,
+                    border: "1px solid #232a3a",
+                    padding: 8,
+                    color: "var(--fg)",
+                  }}
+                  placeholder="Type your feedback here…"
+                />
+
+                {feedbackError && (
+                  <div style={{ fontSize: 12, color: "#f66" }}>
+                    {feedbackError}
+                  </div>
+                )}
+
+                {feedbackStatus === "sent" && (
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                    Thanks — feedback sent.
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                    marginTop: 4,
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="mini"
+                    onClick={() => setShowFeedbackModal(false)}
+                    disabled={feedbackStatus === "sending"}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="mini"
+                    disabled={
+                      feedbackStatus === "sending" || !feedbackText.trim()
+                    }
+                  >
+                    {feedbackStatus === "sending" ? "Sending…" : "Send"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </div>
-
-      {/* Centered hint */}
-      <div className="center-hint">
-        {isMac ? "⌘" : "Ctrl"} + Return to restart
-      </div>
-
-      {/* Restart icon under hint */}
-      <div className="center-actions">
-        <button
-          className="btn-icon"
-          onMouseDown={() => setSquelchHint(true)}
-          onTouchStart={() => setSquelchHint(true)}
-          onClick={() => restart()}
-          aria-label="Restart test"
-          title="Restart (⌘/Ctrl + Return)"
-        >
-          ↻
-        </button>
-      </div>
-
-      {state === "done" && (
-        <footer className="results dim-on-focus">
-          <div>
-            Finished — <strong>{wpm} WPM</strong> (<strong>raw {rawWpm}</strong>
-            ), <strong>{accuracy}%</strong> accuracy.
-          </div>
-
-          {!isSignedIn && (
-            <div
-              style={{
-                marginTop: 6,
-                fontSize: 13,
-                color: "var(--muted)",
-              }}
-            >
-              Log in to be displayed on the leaderboard!
-            </div>
-          )}
-        </footer>
-      )}
-
-      {/* Bottom-left feedback link (fixed) */}
-      <button
-        className="feedback-link-fixed dim-on-focus"
-        onClick={() => setShowFeedbackModal(true)}
-        aria-label="Send feedback"
-      >
-        Send feedback
-      </button>
-
-      {/* Settings (fixed BR) */}
-      <button
-        className="settings-link-fixed dim-on-focus"
-        onClick={() => setShowSettings((s) => !s)}
-        aria-label="Open settings"
-      >
-        Settings
-      </button>
-
-      {showSettings && (
-        <div className="settings-card dim-on-focus">
-          <div className="settings-row">
-            <label className="settings-label">Blocks</label>
-            <input
-              className="settings-input"
-              type="number"
-              min={1}
-              max={10}
-              value={blocks}
-              onChange={(e) => {
-                const v = Math.max(
-                  1,
-                  Math.min(10, Number(e.target.value) || 1)
-                );
-                setBlocks(v);
-              }}
-            />
-            <button className="mini" onClick={() => restart()}>
-              Apply
-            </button>
-          </div>
-
-          <div className="settings-row">
-            <label className="settings-label">Auto-indent</label>
-            <input
-              type="checkbox"
-              checked={autoIndent}
-              onChange={(e) => setAutoIndent(e.target.checked)}
-            />
-          </div>
-
-          <div className="settings-row">
-            <label className="settings-label">Repeat same test</label>
-            <input
-              type="checkbox"
-              checked={repeatSame}
-              onChange={(e) => setRepeatSame(e.target.checked)}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Minimal feedback modal */}
-      {showFeedbackModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 50,
-          }}
-          onClick={() => {
-            if (feedbackStatus !== "sending") setShowFeedbackModal(false);
-          }}
-        >
-          <div
-            className="settings-card"
-            style={{
-              position: "relative",
-              maxWidth: 420,
-              width: "90%",
-              margin: "0 auto",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ marginTop: 0, marginBottom: 8 }}>
-              How can we improve?
-            </h3>
-            <p
-              style={{
-                fontSize: 13,
-                color: "var(--muted)",
-                marginBottom: 8,
-              }}
-            >
-              Tell us what you liked, what felt off, or what you’d change.
-            </p>
-
-            <form
-              onSubmit={handleSubmitFeedback}
-              style={{ display: "grid", gap: 8 }}
-            >
-              <textarea
-                value={feedbackText}
-                onChange={(e) => setFeedbackText(e.target.value)}
-                rows={6}
-                style={{
-                  width: "100%",
-                  height: 140,
-                  resize: "none",
-                  background: "transparent",
-                  borderRadius: 8,
-                  border: "1px solid #232a3a",
-                  padding: 8,
-                  color: "var(--fg)",
-                }}
-                placeholder="Type your feedback here…"
-              />
-
-              {feedbackError && (
-                <div style={{ fontSize: 12, color: "#f66" }}>
-                  {feedbackError}
-                </div>
-              )}
-
-              {feedbackStatus === "sent" && (
-                <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                  Thanks — feedback sent.
-                </div>
-              )}
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: 8,
-                  marginTop: 4,
-                }}
-              >
-                <button
-                  type="button"
-                  className="mini"
-                  onClick={() => setShowFeedbackModal(false)}
-                  disabled={feedbackStatus === "sending"}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="mini"
-                  disabled={
-                    feedbackStatus === "sending" || !feedbackText.trim()
-                  }
-                >
-                  {feedbackStatus === "sending" ? "Sending…" : "Send"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

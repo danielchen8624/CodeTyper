@@ -498,3 +498,200 @@ body {
   font-style: normal;
   color: #aab3c8;
 }
+
+.animated-gradient-text {
+  position: relative;
+  margin: 0 auto;
+  display: flex;
+  max-width: fit-content;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1.25rem;
+  font-weight: 500;
+  backdrop-filter: blur(10px);
+  transition: box-shadow 0.5s ease-out;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.gradient-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-size: 300% 100%;
+  animation: gradient linear infinite;
+  border-radius: inherit;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.gradient-overlay::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: inherit;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background-color: #060010;
+  z-index: -1;
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.text-content {
+  display: inline-block;
+  position: relative;
+  z-index: 2;
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: gradient linear infinite;
+}
+
+
+.gradient-text {
+  display: inline-block;
+  background-image: linear-gradient(
+    90deg,
+    #4f46e5,
+    #ec4899,
+    #f97316,
+    #22c55e
+  );
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: gradient 4s linear infinite;
+}
+/* ------------ Aurora background (animated) ------------ */
+.aurora-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  background: radial-gradient(circle at top, #020617 0, #020617 40%, #000 100%);
+}
+
+/* base blob */
+.aurora-blob {
+  position: absolute;
+  width: 60vw;
+  height: 60vw;
+  max-width: 720px;
+  max-height: 720px;
+  filter: blur(80px);
+  opacity: 0.8;
+  mix-blend-mode: screen;
+  background-size: 200% 200%; /* lets the gradient “travel” */
+}
+
+/* left/top teal–green ribbon */
+.aurora-blob-1 {
+  top: -20%;
+  left: -10%;
+  background-image: radial-gradient(circle at 20% 20%, #22c1c3, transparent 55%),
+    radial-gradient(circle at 80% 80%, #16a34a, transparent 60%);
+  animation: aurora-move-1 26s ease-in-out infinite alternate,
+             aurora-pulse 14s ease-in-out infinite alternate;
+}
+
+/* right/top blue–purple ribbon */
+.aurora-blob-2 {
+  top: -10%;
+  right: -20%;
+  background-image: radial-gradient(circle at 30% 10%, #4b6cb7, transparent 55%),
+    radial-gradient(circle at 80% 70%, #8b5cf6, transparent 60%);
+  animation: aurora-move-2 32s ease-in-out infinite alternate,
+             aurora-pulse 18s ease-in-out infinite alternate;
+}
+
+/* bottom magenta–cyan glow */
+.aurora-blob-3 {
+  bottom: -25%;
+  left: 5%;
+  background-image: radial-gradient(circle at 10% 60%, #ec4899, transparent 55%),
+    radial-gradient(circle at 90% 30%, #22c55e, transparent 60%);
+  animation: aurora-move-3 38s ease-in-out infinite alternate,
+             aurora-pulse 20s ease-in-out infinite alternate;
+}
+
+/* drifting + slight rotation + background travel */
+@keyframes aurora-move-1 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+    background-position: 0% 0%;
+  }
+  50% {
+    transform: translate3d(8%, 10%, 0) scale(1.05) rotate(6deg);
+    background-position: 50% 30%;
+  }
+  100% {
+    transform: translate3d(14%, 18%, 0) scale(1.1) rotate(10deg);
+    background-position: 100% 60%;
+  }
+}
+
+@keyframes aurora-move-2 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+    background-position: 100% 0%;
+  }
+  50% {
+    transform: translate3d(-8%, 8%, 0) scale(1.08) rotate(-6deg);
+    background-position: 40% 40%;
+  }
+  100% {
+    transform: translate3d(-15%, 15%, 0) scale(1.12) rotate(-12deg);
+    background-position: 0% 80%;
+  }
+}
+
+@keyframes aurora-move-3 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+    background-position: 0% 100%;
+  }
+  50% {
+    transform: translate3d(6%, -6%, 0) scale(1.06) rotate(4deg);
+    background-position: 60% 60%;
+  }
+  100% {
+    transform: translate3d(10%, -12%, 0) scale(1.1) rotate(8deg);
+    background-position: 100% 20%;
+  }
+}
+
+/* subtle brightness breathing */
+@keyframes aurora-pulse {
+  0% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
