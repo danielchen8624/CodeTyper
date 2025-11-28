@@ -386,10 +386,25 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
       // 2) Only put logged-in users on the leaderboard
       if (!user) return;
 
-      const usernameFromMeta =
+            // start with a fallback username
+      let usernameFromMeta =
         (user.user_metadata as any)?.username ??
         user.email?.split("@")[0] ??
         "anon";
+
+      const { data: existingUser, error: existingErr } = await supabase
+        .from("users")
+        .select("username")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (existingErr) {
+        console.error("Error loading existing user row:", existingErr);
+      }
+
+      if (existingUser?.username) {
+        usernameFromMeta = existingUser.username;
+      }
 
       const { error: upsertErr } = await supabase.from("users").upsert(
         {
@@ -399,6 +414,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
         },
         { onConflict: "id" }
       );
+
 
       if (upsertErr) {
         console.error("Error upserting into users:", upsertErr);

@@ -26,7 +26,7 @@ export default function AuthPage() {
         if (error) throw error;
         window.location.hash = ""; // back to main
       } else {
-        // SIGNUP
+        // SIGNUP (no email confirmation in UI)
         const { data, error } = await supabase.auth.signUp({
           email,
           password: pass,
@@ -36,16 +36,22 @@ export default function AuthPage() {
         const user = data.user;
         if (!user) throw new Error("No user returned from sign up.");
 
-        // 🔥 INSERT INTO public.users, not profiles
-        const { error: userError } = await supabase.from("users").insert({
-          id: user.id,
-          email: user.email,
-          username,
-        });
+        // INSERT / UPDATE INTO public.users
+        const { error: userError } = await supabase
+          .from("users")
+          .upsert(
+            {
+              id: user.id,
+              email: user.email,
+              username,
+            },
+            { onConflict: "id" }
+          );
 
         if (userError) throw userError;
 
-        setMsg("Check your email to confirm your account.");
+        // if email confirmations are disabled, user is logged in now
+        window.location.hash = ""; // back to main
       }
     } catch (err: any) {
       setMsg(err.message ?? "Something went wrong.");

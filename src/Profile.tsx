@@ -186,6 +186,41 @@ export default function Profile({
 }) {
   const runs = useRuns(userId);
 
+  // 🔥 display name that prefers public.users.username, falls back to userLabel
+  const [displayName, setDisplayName] = useState(userLabel);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadUsername = async () => {
+      if (!userId) {
+        if (!cancelled) setDisplayName(userLabel ?? "You");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("users")
+        .select("username")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("Error loading username:", error);
+        setDisplayName(userLabel ?? "You");
+        return;
+      }
+
+      setDisplayName(data?.username || userLabel || "You");
+    };
+
+    loadUsername();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, userLabel]);
+
   const stats = useMemo(() => {
     const started = runs.length;
     const completed = runs.length;
@@ -277,10 +312,12 @@ export default function Profile({
             fontWeight: 700,
           }}
         >
-          {userLabel.slice(0, 2).toUpperCase()}
+          {(displayName || "You").slice(0, 2).toUpperCase()}
         </div>
         <div style={{ display: "grid", gap: 6 }}>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>{userLabel}</div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>
+            {displayName || "You"}
+          </div>
           <div style={{ color: "var(--muted)", fontSize: 12 }}>
             tests started <b style={{ color: "var(--fg)" }}>{stats.started}</b>{" "}
             · tests completed{" "}
