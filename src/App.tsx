@@ -54,7 +54,6 @@ function correctWordChars(target: string, input: string): number {
   return chars;
 }
 
-// Hard-wrap text to a max line length while preserving indentation (no mid-token splits when possible)
 function hardWrap(text: string, limit = 70): string {
   const breakable = (s: string) => {
     const w = s.slice(0, limit + 1);
@@ -92,7 +91,6 @@ function computeLineStarts(text: string): number[] {
   return starts;
 }
 
-// ---- layout constants for exact-fit math ----
 const PAD_T = 28;
 const PAD_B = 36;
 const LINES = 10;
@@ -120,7 +118,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
 
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
-  // 🆕 Feedback modal state
+  //  Feedback modal state
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackStatus, setFeedbackStatus] = useState<
@@ -140,7 +138,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
   const stageWrapRef = useRef<HTMLDivElement>(null);
   const hiddenRef = useRef<HTMLTextAreaElement>(null);
   const hasSavedRef = useRef(false);
-  const hasRunSavedRef = useRef(false); // 🆕
+  const hasRunSavedRef = useRef(false); 
 
   // derive font size so 10 lines fill inner height exactly
   const innerHeight = Math.max(0, panelH - PAD_T - PAD_B);
@@ -150,7 +148,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
   // dynamic min height so 10 lines always fit at MIN_FONT
   const getPanelMin = () => PAD_T + PAD_B + LINES * LINE_H * MIN_FONT;
 
-  // cap so ≥1/5 viewport bottom stays free
+  // cap so >=1/5 viewport bottom stays free
   const getPanelMax = () => {
     const vh = typeof window !== "undefined" ? window.innerHeight : 800;
     const reserve = Math.max(120, Math.round(vh / 5));
@@ -178,7 +176,6 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     hiddenRef.current?.focus();
   }, []);
 
-  // Track DOM focus (for hint badge)
   useEffect(() => {
     const sync = () =>
       setHasFocus(document.activeElement === hiddenRef.current);
@@ -207,7 +204,6 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     };
   }, []);
 
-  // Scoped auto-focus when clicking empty areas (but ignore controls + brand bar)
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       const el = e.target as HTMLElement;
@@ -292,7 +288,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     };
   }, []);
 
-  // ---- Stats (Monkeytype) ----
+  // ---- Stats
   const { accuracy, wpm, rawWpm } = useMemo(() => {
     // accuracy: correct keystrokes / total keystrokes
     let correctKeys = 0;
@@ -365,7 +361,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
       const durationMs = endedAt - startedAt;
       const codePerMinute = Math.round(input.length / Math.max(mins, 1e-6));
 
-      // 1) INSERT into runs
+      // 1) Save to runs table
       const { error: runsErr } = await supabase.from("runs").insert({
         user_id: user ? user.id : null,
         started_at: new Date(startedAt).toISOString(),
@@ -383,10 +379,10 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
         console.error("Error inserting into runs:", runsErr);
       }
 
-      // 2) Only put logged-in users on the leaderboard
+      
       if (!user) return;
 
-            // start with a fallback username
+            
       let usernameFromMeta =
         (user.user_metadata as any)?.username ??
         user.email?.split("@")[0] ??
@@ -503,7 +499,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     setEndedAt(null);
     setFocusMode(false); // reset; typing will enable it again
     hasSavedRef.current = false;
-    hasRunSavedRef.current = false; // 🆕 reset run-saving flag
+    hasRunSavedRef.current = false; //  reset run-saving flag
     hiddenRef.current?.focus();
   }
 
@@ -539,7 +535,6 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     setFocusMode(false);
   }
 
-  // Typing handlers — enter focus mode only while NOT done
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setFocusMode(true);
     if (state === "done") return;
@@ -564,7 +559,6 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
 
     const idx = input.length;
 
-    // Tab → manual skip
     if (e.key === "Tab") {
       e.preventDefault();
       if (idx < target.length) {
@@ -573,19 +567,16 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
       }
       return;
     }
-    // Enter → insert the exact run of target newlines, then indent of the first non-empty line after them
     if (e.key === "Enter") {
       e.preventDefault();
       setInput((prev) => {
         const caret = prev.length;
 
-        // 1) Add the exact newline run from target (preserves block jumps)
         let add = "\n";
         if (caret < target.length && isNL(target[caret])) {
           add = consumeWhile(target, caret, isNL); // may be "\n\n" etc.
         }
 
-        // 2) Append indentation from the first non-empty line after that run
         if (autoIndent) {
           let scan = caret + add.length;
           let indent = "";
@@ -594,13 +585,11 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
             const start = scan;
             while (scan < target.length && isSpace(target[scan])) scan++;
 
-            // if this line has code, capture its leading spaces/tabs
             if (scan < target.length && target[scan] !== "\n") {
               indent = target.slice(start, scan);
               break;
             }
 
-            // empty line → skip to the next line
             const nl = target.indexOf("\n", scan);
             if (nl === -1) break;
             scan = nl + 1;
@@ -614,7 +603,6 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
     }
   }
 
-  // ------ fixed 10-line window ------
   const BEFORE = 2;
   const WINDOW = LINES;
   const lineStarts = useMemo(() => computeLineStarts(target), [target]);
@@ -750,12 +738,11 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
             </div>
           </div>
 
-          {/* View leaderboard button (left of profile) */}
           <button
             className="mk-pill"
             type="button"
             onClick={() => {
-              window.location.hash = "#/leaderboardPage"; // <- match main.tsx route
+              window.location.hash = "#/leaderboardPage"; 
             }}
             aria-label="View leaderboard"
           >
@@ -799,7 +786,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
           autoFocus
         />
 
-        {/* Stage (resizable) */}
+        {/* Stage */}
         <div
           ref={stageWrapRef}
           className={`stage-wrap ${hasFocus ? "" : "unfocused"}`}
@@ -916,7 +903,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
           Send feedback
         </button>
 
-        {/* Settings (fixed BR) */}
+        {/* Settings  */}
         <button
           className="settings-link-fixed dim-on-focus"
           onClick={() => setShowSettings((s) => !s)}
@@ -968,7 +955,7 @@ export default function App({ isSignedIn = false }: { isSignedIn?: boolean }) {
           </div>
         )}
 
-        {/* Minimal feedback modal */}
+        {/* feedback modal */}
         {showFeedbackModal && (
           <div
             style={{

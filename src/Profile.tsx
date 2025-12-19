@@ -186,8 +186,7 @@ export default function Profile({
 }) {
   const runs = useRuns(userId);
 
-  // 🔥 display name that prefers public.users.username, falls back to userLabel
-  const [displayName, setDisplayName] = useState(userLabel);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
