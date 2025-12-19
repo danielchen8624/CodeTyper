@@ -3,7 +3,7 @@ export default function Header() {
   return (
     <header className="brand-bar">
       <a href="#" className="brand-link" aria-label="Go to home">
-        {/* Penguin badge (SVG) */}
+        {/* Penguin badge  */}
         <span className="brand-badge" aria-hidden>
           <svg viewBox="0 0 64 48" className="brand-svg">
             <rect x="1.5" y="1.5" rx="8" ry="8" width="61" height="45" className="badge-outline"/>
