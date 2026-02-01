@@ -22,7 +22,7 @@ export default function LeaderboardPage() {
         <div style={{ fontSize: 14, color: "var(--muted)" }}>Loading…</div>
       ) : rows.length === 0 ? (
         <div style={{ fontSize: 14, color: "var(--muted)" }}>
-          No scores yet. Finish a run while logged in to appear here.
+          Supabase project got paused, please contact the admin to view scores 😢
         </div>
       ) : (
         <table
